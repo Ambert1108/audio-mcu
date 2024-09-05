@@ -1,0 +1,100 @@
+# CMake
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+#resources
+*.ico
+*.rc
+
+# Compiled Dynamic libraries
+#*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+#*.a
+#*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Files built by Visual Studio
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.gch
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+*.pos
+*.pdf
+*.pptx
+
+# Chutzpah Test files
+_Chutzpah*
+
+# Visual C++ cache files
+.vs/
+.vscode/
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# Grade
+out/
+build/
+mods/
+res/animations/
+res/fonts/
+res/images/
+CMakeSettings.json
