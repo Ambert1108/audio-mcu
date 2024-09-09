@@ -339,37 +339,39 @@ namespace aom {
 		I_LOG("[hpu::addRequest] receive request: {} -> {}", name, reqInfo(req));
 		status.addCount.fetch_add(1);
 		auto cTime = seeker::time::currentTime();
-		if (!req.has_param("jobId")) {
-			E_LOG("[hpu::addRequest] request has not param: jobId");
+		if (!req.has_param("channelId")) {
+			E_LOG("[hpu::addRequest] request has not param: channelId");
 			DefaultResponse errRsp{ PARAM_JOBID_EMPTY, JOBID_EMPTY_MSG };
 			rsp.set_content(toJsonString(errRsp), ContentType::json);
 			return;
 		}
-		std::string jobId = req.get_param_value("jobId");
-		UpdateJobContext context;
+		std::string channelId = req.get_param_value("channelId");
+		AddChnlContext context;
 		try {
 			fromJsonString(context, req.body);
 		}
 		catch (std::exception& ex) {
-			E_LOG("[hpu::addRequest->{}] require body parse error:{}", jobId, ex.what());
+			E_LOG("[hpu::addRequest->{}:{}] require body parse error:{}", context.jobId, channelId, ex.what());
 			DefaultResponse errRsp{ PARSER_BODY_ERROR, PARSER_FAIL_MSG };
 			rsp.set_content(toJsonString(errRsp), ContentType::json);
 			return;
 		}
-		context.jobId = jobId;
-
-		HandleError ret = mcu->updateMpu(context);
+		context.chnlId = channelId;
+		ListenAddr addr;
+		HandleError ret = mcu->addChnl(context, addr);
 		if (ret != Success) {
-			E_LOG("[hpu::addRequest->{}] {}, {}", jobId, ret.errCode, ret.errMsg);
+			E_LOG("[hpu::addRequest->{}:{}] {}, {}", context.jobId, channelId, ret.errCode, ret.errMsg);
 			DefaultResponse errRsp{ ret.errCode, ret.errMsg };
 			rsp.set_content(toJsonString(errRsp), ContentType::json);
 			return;
 		}
 
-		DefaultResponse resp;
+		AddChnlRespInfo resp;
+		resp.listenIp = addr.ip;
+		resp.listenPort = addr.port;
 		status.addOk.fetch_add(1);
 		int64_t consumeTime = seeker::time::currentTime() - cTime;
-		I_LOG("[hpu::addRequest->{}] handle use {}ms", jobId, consumeTime);
+		I_LOG("[hpu::addRequest->{}:{}] handle use {}ms", context.jobId, channelId, consumeTime);
 		status.addConsumeSum.fetch_add(consumeTime);
 		status.addConsumeCount.fetch_add(1);
 		rsp.set_content(toJsonString(resp), ContentType::json);
@@ -379,16 +381,27 @@ namespace aom {
 		I_LOG("[hpu::removeRequest] receive request: {} -> {}", name, reqInfo(req));
 		status.removeCount.fetch_add(1);
 		auto cTime = seeker::time::currentTime();
-		if (!req.has_param("jobId")) {
-			E_LOG("[HPU::Error] request has not param:jobId");
+		if (!req.has_param("channelId")) {
+			E_LOG("[HPU::Error] request has not param:channelId");
 			DefaultResponse errRsp{ PARAM_JOBID_EMPTY, JOBID_EMPTY_MSG };
 			rsp.set_content(toJsonString(errRsp), ContentType::json);
 			return;
 		}
-		std::string jobId = req.get_param_value("jobId");
-		HandleError ret = mcu->removeMpu(jobId);
+		std::string channelId = req.get_param_value("channelId");
+		RemoveChnlContext context;
+		try {
+			fromJsonString(context, req.body);
+		}
+		catch (std::exception& ex) {
+			E_LOG("[hpu::removeRequest->{}:{}] require body parse error:{}", context.jobId, channelId, ex.what());
+			DefaultResponse errRsp{ PARSER_BODY_ERROR, PARSER_FAIL_MSG };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
+		context.chnlId = channelId;
+		HandleError ret = mcu->removeChnl(context);
 		if (ret != Success) {
-			E_LOG("[hpu::removeRequest->{}] {}->{}", jobId, ret.errCode, ret.errMsg);
+			E_LOG("[hpu::removeRequest->{}:{}] {}->{}", context.jobId, channelId, ret.errCode, ret.errMsg);
 			DefaultResponse errRsp{ ret.errCode, ret.errMsg };
 			rsp.set_content(toJsonString(errRsp), ContentType::json);
 			return;
@@ -396,45 +409,99 @@ namespace aom {
 		DefaultResponse resp;
 		status.removeOk.fetch_add(1);
 		int64_t consumeTime = seeker::time::currentTime() - cTime;
-		I_LOG("[hpu::removeRequest->{}] handle use {}ms", jobId, consumeTime);
+		I_LOG("[hpu::removeRequest->{}:{}] handle use {}ms", context.jobId, channelId, consumeTime);
 		status.removeConsumeSum.fetch_add(consumeTime);
 		status.removeConsumeCount.fetch_add(1);
 		rsp.set_content(toJsonString(resp), ContentType::json);
 	}
 
 	void HttpProcessUnit::openRequest(const Request& req, Response& rsp, const std::string& name) {
+		I_LOG("[hpu::openRequest] receive request: {} -> {}", name, reqInfo(req));
+		status.openCount.fetch_add(1);
+		auto cTime = seeker::time::currentTime();
+		MicCtrlContext context;
+		try {
+			fromJsonString(context, req.body);
+		}
+		catch (std::exception& ex) {
+			E_LOG("[hpu::openRequest->{}] require body parse error:{}", context.jobId, ex.what());
+			DefaultResponse errRsp{ PARSER_BODY_ERROR, PARSER_FAIL_MSG };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
+		HandleError ret = mcu->openMic(context);
+		if (ret != Success) {
+			E_LOG("[hpu::openRequest->{}]  {}, {}", context.jobId, ret.errCode, ret.errMsg);
+			DefaultResponse errRsp{ ret.errCode, ret.errMsg };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
 
+		DefaultResponse resp;
+		int64_t consumeTime = seeker::time::currentTime() - cTime;
+		I_LOG("[hpu::openRequest->{}] handle use {}ms", context.jobId, consumeTime);
+		status.openOk.fetch_add(1);
+		status.openConsumeSum.fetch_add(consumeTime);
+		status.openConsumeCount.fetch_add(1);
+		rsp.set_content(toJsonString(resp), ContentType::json);
 	}
 
 	void HttpProcessUnit::closeRequest(const Request& req, Response& rsp, const std::string& name) {
+		I_LOG("[hpu::closeRequest] receive request: {} -> {}", name, reqInfo(req));
+		status.closeCount.fetch_add(1);
+		auto cTime = seeker::time::currentTime();
+		MicCtrlContext context;
+		try {
+			fromJsonString(context, req.body);
+		}
+		catch (std::exception& ex) {
+			E_LOG("[hpu::closeRequest->{}] require body parse error:{}", context.jobId, ex.what());
+			DefaultResponse errRsp{ PARSER_BODY_ERROR, PARSER_FAIL_MSG };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
+		HandleError ret = mcu->closeMic(context);
+		if (ret != Success) {
+			E_LOG("[hpu::closeRequest->{}]  {}, {}", context.jobId, ret.errCode, ret.errMsg);
+			DefaultResponse errRsp{ ret.errCode, ret.errMsg };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
 
+		DefaultResponse resp;
+		int64_t consumeTime = seeker::time::currentTime() - cTime;
+		I_LOG("[hpu::closeRequest->{}] handle use {}ms", context.jobId, consumeTime);
+		status.closeOk.fetch_add(1);
+		status.closeConsumeSum.fetch_add(consumeTime);
+		status.closeConsumeCount.fetch_add(1);
+		rsp.set_content(toJsonString(resp), ContentType::json);
 	}
 
 	void HttpProcessUnit::endRequest(const Request& req, Response& rsp, const std::string& name) {
-		//I_LOG("[hpu::removeRequest] receive request: {} -> {}", name, reqInfo(req));
-		//status.removeCount.fetch_add(1);
-		//auto cTime = seeker::time::currentTime();
-		//if (!req.has_param("jobId")) {
-		//	E_LOG("[HPU::Error] request has not param:jobId");
-		//	DefaultResponse errRsp{ PARAM_JOBID_EMPTY, JOBID_EMPTY_MSG };
-		//	rsp.set_content(toJsonString(errRsp), ContentType::json);
-		//	return;
-		//}
-		//std::string jobId = req.get_param_value("jobId");
-		//HandleError ret = mcu->removeMpu(jobId);
-		//if (ret != Success) {
-		//	E_LOG("[hpu::removeRequest->{}] {}->{}", jobId, ret.errCode, ret.errMsg);
-		//	DefaultResponse errRsp{ ret.errCode, ret.errMsg };
-		//	rsp.set_content(toJsonString(errRsp), ContentType::json);
-		//	return;
-		//}
-		//DefaultResponse resp;
-		//status.removeOk.fetch_add(1);
-		//int64_t consumeTime = seeker::time::currentTime() - cTime;
-		//I_LOG("[hpu::removeRequest->{}] handle use {}ms", jobId, consumeTime);
-		//status.removeConsumeSum.fetch_add(consumeTime);
-		//status.removeConsumeCount.fetch_add(1);
-		//rsp.set_content(toJsonString(resp), ContentType::json);
+		I_LOG("[hpu::endRequest] receive request: {} -> {}", name, reqInfo(req));
+		status.removeCount.fetch_add(1);
+		auto cTime = seeker::time::currentTime();
+		if (!req.has_param("jobId")) {
+			E_LOG("[HPU::Error] request has not param:jobId");
+			DefaultResponse errRsp{ PARAM_JOBID_EMPTY, JOBID_EMPTY_MSG };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
+		std::string jobId = req.get_param_value("jobId");
+		HandleError ret = mcu->endMpu(jobId);
+		if (ret != Success) {
+			E_LOG("[hpu::endRequest->{}] {}->{}", jobId, ret.errCode, ret.errMsg);
+			DefaultResponse errRsp{ ret.errCode, ret.errMsg };
+			rsp.set_content(toJsonString(errRsp), ContentType::json);
+			return;
+		}
+		DefaultResponse resp;
+		status.removeOk.fetch_add(1);
+		int64_t consumeTime = seeker::time::currentTime() - cTime;
+		I_LOG("[hpu::endRequest->{}] handle use {}ms", jobId, consumeTime);
+		status.removeConsumeSum.fetch_add(consumeTime);
+		status.removeConsumeCount.fetch_add(1);
+		rsp.set_content(toJsonString(resp), ContentType::json);
 	}
 
 	void HttpProcessUnit::pollRequest(const Request& req, Response& rsp, const std::string& name) {

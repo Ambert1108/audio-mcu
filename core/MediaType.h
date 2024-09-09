@@ -32,7 +32,7 @@ namespace aom {
 
 		virtual ~Event() {};
 
-		virtual void handle(MediaProcessUnit* mpu)
+		virtual void handle(void* ptr = nullptr)
 		{ W_LOG("Base Event do nothing"); };
 
 	protected:

@@ -20,7 +20,7 @@ namespace aom {
 	int MediaControlUnit::init() {
 		std::string deviceId = seeker::IniConfig::Get("main", "device_id", "0");
 		AutoCloseThr = std::thread{ &MediaControlUnit::autoClose, this };
-		func = std::bind(&MediaControlUnit::removeMpu, this, std::placeholders::_1);
+		func = std::bind(&MediaControlUnit::endMpu, this, std::placeholders::_1);
 
 		status.hostMemKeepTimePoint = seeker::time::currentTime();
 		mcuCheck = InvokeTimer::CreateTimer(std::chrono::seconds(mcucheckInterval), true, [&]() {
@@ -57,7 +57,7 @@ namespace aom {
 				writeLock lck(closeMpuFormLocker);
 				tmpCloseForm.swap(closeMpus);
 			}
-
+			if (tmpCloseForm.empty()) continue;
 			for (auto each = tmpCloseForm.begin(); each != tmpCloseForm.end();) {
 				if ((*each)->getStatus() != TaskStatusType::end && (*each)->getStatus() != TaskStatusType::exce) {
 					each++;
@@ -72,6 +72,7 @@ namespace aom {
 				if(data.closeMethod != "HttpRequest") autoCloseNum.fetch_add(1);
 				each = tmpCloseForm.erase(each);
 				status.runningJob.fetch_sub(1);
+				status.runningChnl.fetch_sub(1);
 			}
 		}
 
@@ -88,47 +89,24 @@ namespace aom {
 		if (it != mpus.end()) return JobidExist;
 
 		//mpu不存在，创建任务
-		
-		//申请音频端口端口
-		port_t audioPort = audioPortTool->applyPort();
-		if (audioPort == APPLY_UDP_PORT_ERROR) {
-			audioPortTool->freePort(audioPort);
-			return ApplyPortError;
-		}
+		if (context.codecType == -1) context.codecType = codecType;
+		if (context.bitrate == -1) context.bitrate = bitrate;
+		if (context.sampleRate == -1) context.sampleRate = samplerate;
 
 		//尝试构造并加入MPU表单，若加入失败代表对应jobId已存在
 		Iterator newMpu;
 		{
 			writeLock lck(mpuFormLocker);
-			newMpu = mpus.try_emplace(context.jobId, std::make_unique<MediaProcessUnit>(context.jobId, func));
+			newMpu = mpus.try_emplace(context.jobId, 
+				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, context.codecType,
+				context.sampleRate, context.bitrate, context.timeInterval, pt), func));
 		}
 		if (!newMpu.second) return JoinJobError;
-
-		//更新mcu的runningJob
 		status.runningJob.fetch_add(1);
-
 		return Success;
 	}
 
-	HandleError MediaControlUnit::updateMpu(const UpdateJobContext& context) {
-		//判断jobId是否存在
-		mpuForm::iterator it;
-		{
-			readLock lck(mpuFormLocker);
-			it = mpus.find(context.jobId);
-
-		}
-
-		//mpu不存在，创建失败
-		if (it == mpus.end()) return JobidNotFound;
-
-		//更新mpu
-		it->second->reportMediaInfo(std::make_unique<UpdateEvent>(context));
-
-		return Success;
-	}
-
-	HandleError MediaControlUnit::removeMpu(const std::string& jobId) {
+	HandleError MediaControlUnit::endMpu(const std::string& jobId) {
 		UniqueMPU mpu = nullptr;
 
 		//在MPU表单中查找对应jobId，若不存在返回错误
@@ -147,7 +125,7 @@ namespace aom {
 		}
 
 		//向对应的MPU发送关闭事件
-		mpu->reportMediaInfo(std::make_unique<CloseEvent>());
+		mpu->reportMediaInfo(std::make_unique<EndEvent>());
 
 		//将需要销毁的MPU移交给待关闭MPU表单
 		{
@@ -155,6 +133,87 @@ namespace aom {
 			closeMpus.emplace(std::move(mpu));
 		}
 
+		return Success;
+	}
+
+	HandleError MediaControlUnit::addChnl(const AddChnlContext& context, ListenAddr& addr) {
+		//判断jobId是否存在
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			it = mpus.find(context.jobId);
+
+		}
+
+		//mpu不存在，业务处理失败
+		if (it == mpus.end()) return JobidNotFound;
+
+		//申请音频端口
+		port_t audioPort = audioPortTool->applyPort();
+		if (audioPort == APPLY_UDP_PORT_ERROR) {
+			audioPortTool->freePort(audioPort);
+			return ApplyPortError;
+		}
+		context.listenIp = mediaIp;
+		context.listenPort = audioPort;
+		addr.ip = mediaIp;
+		addr.port = audioPort;
+
+		//更新mpu
+		it->second->reportMediaInfo(std::make_unique<AddChnlEvent>(context));
+
+		return Success;
+	}
+
+	HandleError MediaControlUnit::removeChnl(const RemoveChnlContext& context) {
+
+		//判断jobId是否存在
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			it = mpus.find(context.jobId);
+
+		}
+
+		//mpu不存在，业务处理失败
+		if (it == mpus.end()) return JobidNotFound;
+
+		//更新mpu
+		it->second->reportMediaInfo(std::make_unique<RemoveChnlEvent>(context));
+		return Success;
+	}
+
+	HandleError MediaControlUnit::openMic(const MicCtrlContext& context) {
+		//判断jobId是否存在
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			it = mpus.find(context.jobId);
+
+		}
+
+		//mpu不存在，业务处理失败
+		if (it == mpus.end()) return JobidNotFound;
+
+		//更新mpu
+		it->second->reportMediaInfo(std::make_unique<OpenMicEvent>(context));
+		return Success;
+	}
+
+	HandleError MediaControlUnit::closeMic(const MicCtrlContext& context) {
+		//判断jobId是否存在
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			it = mpus.find(context.jobId);
+
+		}
+
+		//mpu不存在，业务处理失败
+		if (it == mpus.end()) return JobidNotFound;
+
+		//更新mpu
+		it->second->reportMediaInfo(std::make_unique<CloseMicEvent>(context));
 		return Success;
 	}
 

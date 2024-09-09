@@ -72,22 +72,45 @@ namespace aom {
 		std::vector<port_t> portList{};
 	};
 
+	struct MpuContext {
+		std::string jobId;
+		int codecType;
+		int outSampleRate;
+		int bitrate;
+		double interval; //ms
+		int payloadType;
+		MpuContext(std::string id, int type, int samplerate, int rate, int ti, int pt) 
+			: jobId(id), codecType(type), outSampleRate(samplerate), bitrate(rate), payloadType(pt) {
+			if (ti > 0) interval = ti;
+			else {
+				try {
+					interval = 1.0 / outSampleRate * 1000;
+				}
+				catch (std::exception& ex) {
+					E_LOG("count time interval failed, out sample rate is {}", outSampleRate);
+					interval = 1.0;
+				}
+			}
+		}
+	};
+	typedef std::unique_ptr<MpuContext> MpuCtxPtr;
+
 	typedef std::unique_ptr<class MediaProcessUnit> UniqueMPU;
 	typedef std::function<HandleError(std::string)> RemoveCallback;
 	using namespace std::chrono_literals;
 
 	class MediaProcessUnit {
 	public:
-		MediaProcessUnit(std::string id, RemoveCallback callback);
+		MediaProcessUnit(MpuCtxPtr&& ctxPtr, RemoveCallback callback);
 		~MediaProcessUnit();
 
 		void reportMediaInfo(std::unique_ptr<Event> info);
 
 		TaskStatusType getStatus() const;
 		const MediaProcessData& getData() const;
+		int getChnlNum() const;
 
 	private:
-		std::string jobId;
 		std::thread workTh{};
 		std::thread eventTh{};
 		std::thread stopTh{};
@@ -105,8 +128,10 @@ namespace aom {
 
 		std::deque<std::unique_ptr<Event>> eventQue{};
 		mutable std::shared_mutex eventQueLocker{};
+		std::unordered_map<int32_t, UniqueAPC> APCs;
 
 		TaskStatus status;
+		MpuCtxPtr ctx;
 		MediaProcessData data;
 		//UniqueEPU epu = nullptr;
 
@@ -118,22 +143,59 @@ namespace aom {
 		void workingLoop();
 		void eventHandle();
 
-		friend class UpdateEvent;
+		friend class AddChnlEvent;
 	};
 
-	class UpdateEvent : public Event {
+	class EndEvent : public Event {
 	public:
-		UpdateEvent(const UpdateJobContext& c) : Event(JobHandleType::update), context(c) {};
+		EndEvent() : Event(JobHandleType::stop) {};
+	};
 
-		void handle(MediaProcessUnit* mpu) override {
-		
+	class AddChnlEvent : public Event {
+	public:
+		AddChnlEvent(const AddChnlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+
+		void handle(void* ptr) override {
+			MediaProcessUnit* master = nullptr;
+			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
 		};
 
-		UpdateJobContext context;
+		AddChnlContext context;
 	};
 
-	class CloseEvent : public Event {
+	class RemoveChnlEvent : public Event {
 	public:
-		CloseEvent() : Event(JobHandleType::stop) {};
+		RemoveChnlEvent(const RemoveChnlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+
+		void handle(void* ptr) override {
+			MediaProcessUnit* master = nullptr;
+			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+		};
+
+		RemoveChnlContext context;
+	};
+
+	class OpenMicEvent : public Event {
+	public:
+		OpenMicEvent(const MicCtrlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+
+		void handle(void* ptr) override {
+			MediaProcessUnit* master = nullptr;
+			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+		};
+
+		MicCtrlContext context;
+	};
+
+	class CloseMicEvent : public Event {
+	public:
+		CloseMicEvent(const MicCtrlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+
+		void handle(void* ptr) override {
+			MediaProcessUnit* master = nullptr;
+			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+		};
+
+		MicCtrlContext context;
 	};
 }

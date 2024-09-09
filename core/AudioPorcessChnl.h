@@ -38,15 +38,6 @@ namespace aom {
 		port_t audioPort = 0;
 	};
 
-	struct ChnlContext {
-		std::string jobId;
-		int payloadType;
-		int framerate;
-		int gop;
-		int bitrate;
-	};
-	typedef std::shared_ptr<ChnlContext> ChnlCtxPtr;
-
 	using namespace seeker::rtp;
 	typedef std::unique_ptr<AudioEngine23::Decoder> Decoder;
 	typedef std::unique_ptr<AudioEngine23::Encoder> Encoder;
@@ -58,6 +49,7 @@ namespace aom {
 
 	class AudioPorcessChnl {
 	private:
+		std::string jobId;
 		Demuxer demuxer = nullptr;
 		Decoder decoder = nullptr;
 		Encoder encoder = nullptr;
@@ -69,4 +61,6 @@ namespace aom {
 		int setDecoder();
 		int setEncoder();
 	};
+
+	using UniqueAPC = std::unique_ptr<AudioPorcessChnl>;
 }

@@ -79,125 +79,54 @@ namespace aom {
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PollRespInfo, jobNumber, jobList);
   typedef PollRespInfo PollResponse;
 
-  struct Element {
-    /* 图片特效共有 */
-
-    std::string mediaId;
-
-    /* 动态图片特有 */
-
-    int framerate = 30;
-
-    /* 提示字幕特有 */
-
-    std::string text;
-    std::string fontSize;
-    std::string fontColor = "#000000";
-    std::string fontFamily{};
-
-    /* 所有特效共有 */
-
-    std::string type;
-    int marginTop = 0;
-    int marginLeft = 0;
-    int width = 0;
-    int height = 0;
-
-    friend void from_json(const nlohmann::json& j, Element& e) {
-      j.at("type").get_to(e.type);
-      if (e.type == "image") {
-        j.at("mediaId").get_to(e.mediaId);
-      }
-      else if (e.type == "animation") {
-        j.at("mediaId").get_to(e.mediaId);
-        if (j.contains("framerate")) j.at("framerate").get_to(e.framerate);
-      }
-      else if (e.type == "text") {
-        j.at("text").get_to(e.text);
-        j.at("fontSize").get_to(e.fontSize);
-        if (j.contains("fontColor")) j.at("fontColor").get_to(e.fontColor);
-      }
-      else throw std::logic_error("receive type " + e.type + " is error");
-      if (j.contains("marginTop")) j.at("marginTop").get_to(e.marginTop);
-      if (j.contains("marginLeft")) j.at("marginLeft").get_to(e.marginLeft);
-      if (j.contains("width")) j.at("width").get_to(e.width);
-      if (j.contains("height")) j.at("height").get_to(e.height);
-    }
-  };
-
-  struct Canvas {
-    std::string backgroundColor = "#FFFFFF";
-    int marginTop = 0;
-    int marginLeft = 0;
-    int width = 0;
-    int height = 0;
-    int opacity = 0;
-    std::vector<Element> elements;
-
-    friend void from_json(const nlohmann::json& j, Canvas& c) {
-      if (j.contains("backgroundColor")) j.at("backgroundColor").get_to(c.backgroundColor);
-      if (j.contains("marginTop")) j.at("marginTop").get_to(c.marginTop);
-      if (j.contains("marginLeft")) j.at("marginLeft").get_to(c.marginLeft);
-      if (j.contains("width")) j.at("width").get_to(c.width);
-      if (j.contains("height")) j.at("height").get_to(c.height);
-      if (j.contains("opacity")) j.at("opacity").get_to(c.opacity);
-      const auto& arr = j.at("elements");
-      c.elements.reserve(10);
-      for (const auto& e : arr) {
-        c.elements.push_back(e);
-      }
-    }
-  };
-
-  struct Module {
-    std::vector<Canvas> canvas;
-    friend void from_json(const nlohmann::json& j, Module& m) {
-      const auto& arr = j.at("canvas");
-      m.canvas.reserve(5);
-      for (const auto& c : arr) {
-        m.canvas.push_back(c);
-      }
-    }
-  };
-
-
-  struct EffectInfo {
-    int duration = 0;
-    Module landscape;
-    Module portrait;
-    friend void from_json(const nlohmann::json& j, EffectInfo& ei) {
-      if (j.contains("duration")) j.at("duration").get_to(ei.duration);
-      j.at("landscape").get_to(ei.landscape);
-      j.at("portrait").get_to(ei.portrait);
-    }
-  };
-
   struct CreateJobContext {
     std::string jobId = "unknown";
-    std::string targetIp;
-    port_t targetPort;
-    std::string mediaFilePath;
-    EffectInfo effectInfo;
+    mutable int codecType = -1;
+    mutable int sampleRate = -1;
+    mutable int bitrate = -1;
+    int timeInterval = -1;
 
     friend void from_json(const nlohmann::json& j, CreateJobContext& context) {
-      j.at("targetIp").get_to(context.targetIp);
-      j.at("targetPort").get_to(context.targetPort);
-      j.at("mediaFilePath").get_to(context.mediaFilePath);
-      j.at("effectInfo").get_to(context.effectInfo);
+      if(j.contains("codecType"))j.at("codecType").get_to(context.codecType);
+      if(j.contains("sampleRate"))j.at("sampleRate").get_to(context.sampleRate);
+      if(j.contains("bitrate"))j.at("bitrate").get_to(context.bitrate);
+      if(j.contains("timeInterval"))j.at("timeInterval").get_to(context.timeInterval);
     }
   };
 
-  struct UpdateJobContext {
+  struct AddChnlContext {
     std::string jobId = "unknown";
-    std::string mediaFilePath{};
-    int updateMode = 0;
-    EffectInfo effectInfo;
-    bool noTemplate = false;
-    friend void from_json(const nlohmann::json& j, UpdateJobContext& context) {
-      if (j.contains("mediaFilePath")) j.at("mediaFilePath").get_to(context.mediaFilePath);
-      if (j.contains("updateMode")) j.at("updateMode").get_to(context.updateMode);
-      if (j.contains("effectInfo")) j.at("effectInfo").get_to(context.effectInfo);
-      else context.noTemplate = true;
+    std::string chnlId = "unknown";
+    int sampleRate;
+    std::string dstIp;
+    port_t dstPort;
+    mutable std::string listenIp{};
+    mutable port_t listenPort = 0;
+    friend void from_json(const nlohmann::json& j, AddChnlContext& context) {
+      j.at("jobId").get_to(context.jobId);
+      j.at("sampleRate").get_to(context.sampleRate);
+      j.at("dstIp").get_to(context.dstIp);
+      j.at("dstPort").get_to(context.dstPort);
     }
   };
+
+  struct AddChnlRespInfo {
+    int errCode = 0;
+    std::string msg = "ok";
+    std::string listenIp;
+    int listenPort;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AddChnlRespInfo, errCode, msg, listenIp, listenPort);
+
+  struct RemoveChnlContext {
+    std::string jobId = "unknown";
+    std::string chnlId = "unknown";
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RemoveChnlContext, jobId);
+
+  struct MicCtrlContext {
+    std::string jobId = "unknown";
+    std::string chnlId = "unknown";
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MicCtrlContext, jobId, chnlId);
 }

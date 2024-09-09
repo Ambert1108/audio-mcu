@@ -5,4 +5,4 @@ add_executable(${TARGET_NAME} ${CPP_LIST})
 target_include_directories(${TARGET_NAME} PUBLIC ${PROJECT_INCLUDE})
 target_link_libraries(${TARGET_NAME} PUBLIC ${PROJECT_LIBS})
 
-#file(COPY "${PROJECT_SOURCE_DIR}/res/config.ini" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/resources/")
+file(COPY "${PROJECT_SOURCE_DIR}/res/config.ini" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/resources/")

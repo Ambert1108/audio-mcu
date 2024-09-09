@@ -20,6 +20,7 @@ namespace aom {
 		int64_t hostMemKeepTimePoint = 0;
 
 		std::atomic<uint64_t> runningJob = 0;
+		std::atomic<uint64_t> runningChnl = 0;
 	};
 
 	using PortList = std::unordered_set<port_t>;
@@ -88,6 +89,11 @@ namespace aom {
 		mutable std::mutex portLocker = {};
 	};
 
+	struct ListenAddr {
+		std::string ip;
+		port_t port;
+	};
+
 	typedef RemoveCallback RemoveFunc;
 	typedef std::string JobId;
 	using mpuCloseForm = std::unordered_set<UniqueMPU>;
@@ -110,7 +116,7 @@ namespace aom {
 		const int codecType = seeker::IniConfig::GetInteger("media", "codec_type", 1);
 		const int bitrate = seeker::IniConfig::GetInteger("media", "bit_rate", 960000);
 		const int samplerate = seeker::IniConfig::GetInteger("media", "sample_rate", 8000);
-		const int pt = seeker::IniConfig::GetInteger("media", "payload_type", 100);
+		const int pt = seeker::IniConfig::GetInteger("media", "payload_type", 97);
 
 
 		static MediaControlUnit* mcu;
@@ -159,8 +165,11 @@ namespace aom {
 		uint64_t autoCloseCount() const { return autoCloseNum.load(); }
 
 		HandleError createMpu(const CreateJobContext& context);
-		HandleError updateMpu(const UpdateJobContext& context);
-		HandleError removeMpu(const std::string& jobId);
+		HandleError endMpu(const std::string& id);
+		HandleError addChnl(const AddChnlContext& context, ListenAddr& addr);
+		HandleError removeChnl(const RemoveChnlContext& context);
+		HandleError openMic(const MicCtrlContext& context);
+		HandleError closeMic(const MicCtrlContext& context);
 
 		HandleError getMpuIdList(mpuIdList& list);
 	};

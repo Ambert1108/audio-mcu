@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
 			I_LOG("config file contants:{} \n", configFileString);
 			std::cout << std::endl;
 		
-			std::cout << "Hello compass, mem:" << seeker::file::getVmRSS() << "KB" << std::endl;
+			std::cout << "Hello User, mem:" << seeker::file::getVmRSS() << "KB" << std::endl;
 			seeker::Logger::init(logFilename, false, openStdOut, true, logPattern, logLevel);
 		
 			T_LOG("TRACE LEVEL IS OPEN");
@@ -38,8 +38,9 @@ int main(int argc, char* argv[]) {
 			I_LOG("//////////////////////////////////");
 			I_LOG("//                              //");
 			I_LOG("//                              //");
-			I_LOG("//        Hello Faust           //");
-			I_LOG("//        version:{}         //", version);
+			I_LOG("//        Hello User            //");
+			I_LOG("//      Faust version:{}     //", version);
+			I_LOG("//                              //");
 			I_LOG("//                              //");
 			I_LOG("//////////////////////////////////");
 		
@@ -72,7 +73,7 @@ int main(int argc, char* argv[]) {
 			mcu = nullptr;
 			seeker::Logger::shutdown();
 			std::this_thread::sleep_for(std::chrono::seconds(1));
-			std::cout << "Goodbye coldJade, mem:" << seeker::file::getVmRSS() << "KB" << std::endl;
+			std::cout << "Goodbye User, mem:" << seeker::file::getVmRSS() << "KB" << std::endl;
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 		catch (std::exception& ex) {

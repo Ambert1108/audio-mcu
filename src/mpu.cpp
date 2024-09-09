@@ -10,14 +10,15 @@ namespace aom {
 		return s;
 	}
 
-	MediaProcessUnit::MediaProcessUnit(std::string id, RemoveCallback callback)
-		: jobId(id), autoCloseCallback(callback) {
+	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback)
+		: ctx(std::move(ptr)), autoCloseCallback(callback), APCs(10) {
 		startTime = seeker::time::currentTime();
 		status << TaskStatusType::run;
 		workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
 		eventTh = std::thread{ &MediaProcessUnit::eventHandle, this };
-		data.jobId = jobId;
-		I_LOG("[MPU::MediaProcessUnit] create job {}", jobId);
+		data.jobId = ctx->jobId;
+		I_LOG("[MPU::create] jobId={}, codecType={}, outSampleRate={}, bitrate={}, timeInterval={}", 
+			ctx->jobId, ctx->codecType, ctx->outSampleRate, ctx->bitrate, ctx->interval);
 		data.creatingDuration = seeker::time::currentTime() - startTime;
 	}
 
@@ -28,13 +29,13 @@ namespace aom {
 		//MPU转为exce态或未收到RTP包时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
 		stop();
 
-		I_LOG("[MPU::destory] jobId={} success", jobId);
+		I_LOG("[MPU::destory] jobId={} success", ctx->jobId);
 	}
 
 	void MediaProcessUnit::reportMediaInfo(std::unique_ptr<Event> info) {
 		if (!status) return;
 		if (!info) {
-			E_LOG("[MPU::Error][{}] evnetQue get a nullptr event!", jobId);
+			E_LOG("[MPU::Error][{}] evnetQue get a nullptr event!", ctx->jobId);
 		}
 		{
 			writeLock lck(eventQueLocker);
@@ -71,7 +72,7 @@ namespace aom {
 	void MediaProcessUnit::output() {
 		W_LOG("\n--------- mpu output ---------\njobId={}, closeMethod={}\nMixoutNum={}\n"
 			"Duration=[{}ms/{}ms/{}](create/destory/run)\nupdateCount={}\n"
-			"\n--------- mpu output ---------",
+			"--------- mpu output ---------",
 			data.jobId, data.closeMethod, data.timeOutNum,
 			data.creatingDuration, data.destroyingDuration, parseTime(data.runningDuration), data.updateCount);
 	}
@@ -85,10 +86,10 @@ namespace aom {
 			});
 		printTimer->Start();
 
-		W_LOG("[mpu::workingLoop->{}] Thread is open", jobId);
+		W_LOG("[mpu::workingLoop->{}] Thread is open", ctx->jobId);
 			
 		if (printTimer) printTimer->Cancel();
-		I_LOG("[mpu::workingLoop->{}] thread is closed", jobId);
+		I_LOG("[mpu::workingLoop->{}] thread is closed", ctx->jobId);
 	}
 
 	void MediaProcessUnit::eventHandle() {
@@ -110,18 +111,18 @@ namespace aom {
 					if (!status) break;
 					switch (each->type) {
 					case JobHandleType::stop:
-						I_LOG("[mpu::eventHandle->{}] handle stop event", jobId);
+						I_LOG("[mpu::eventHandle->{}] handle stop event", ctx->jobId);
 						stopTh = std::thread{ &MediaProcessUnit::stop, this };
 						break;
 
 					case JobHandleType::update:
-						I_LOG("[mpu::eventHandle->{}] handle update event", jobId);
+						I_LOG("[mpu::eventHandle->{}] handle update event", ctx->jobId);
 						each->handle(this);
 						data.updateCount++;						
 						break;
 
 					default:
-						E_LOG("[mpu::eventHandle->{}] handle unknown event, type={}", jobId, (int)each->type);
+						E_LOG("[mpu::eventHandle->{}] handle unknown event, type={}", ctx->jobId, (int)each->type);
 						break;
 					}
 				}
@@ -129,11 +130,11 @@ namespace aom {
 			}
 		}
 		catch (std::exception& ex) {
-			E_LOG("[mpu::eventHandle->{}] get exception: {}", jobId, ex.what());
+			E_LOG("[mpu::eventHandle->{}] get exception: {}", ctx->jobId, ex.what());
 			status << TaskStatusType::exce;
 			data.closeMethod = "MpuException";
-			autoCloseCallback(jobId);
+			autoCloseCallback(ctx->jobId);
 		}
-		I_LOG("[mpu::eventHandle->{}] eventHandle thread is closed", jobId);
+		I_LOG("[mpu::eventHandle->{}] eventHandle thread is closed", ctx->jobId);
 	}
 }
