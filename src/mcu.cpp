@@ -94,14 +94,13 @@ namespace aom {
 		if (context.sampleRate == -1) context.sampleRate = samplerate;
 
 		//尝试构造并加入MPU表单，若加入失败代表对应jobId已存在
-		Iterator newMpu;
 		{
 			writeLock lck(mpuFormLocker);
-			newMpu = mpus.try_emplace(context.jobId, 
+			auto newMpu = mpus.try_emplace(context.jobId, 
 				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, context.codecType,
 				context.sampleRate, context.bitrate, context.timeInterval, pt), func));
+			if (!newMpu.second) return JoinJobError;
 		}
-		if (!newMpu.second) return JoinJobError;
 		status.runningJob.fetch_add(1);
 		return Success;
 	}

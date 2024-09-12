@@ -10,47 +10,17 @@
 #include "seeker/common.h"
 #include "seeker/logger.h"
 #include "seeker/loggerApi.h"
+#if USE_X_MIX
+#include "audioMix/core/audioMix.h"
+using namespace hybird;
+#else
+#include "remix/remix.h"
+using namespace Remix;
+#endif
+
 #include "AudioPorcessChnl.h"
 
 namespace aom {
-	struct Point {
-		std::string ip;
-		port_t port;
-	};
-
-	/*
-	* 任务状态类型
-	* raw: 初始态，表示mpu正在初始化并加载资源。由内部控制
-	* run: 运行态，表示mpu正在工作。初始态结束后自然成为运行态。外部可以修改
-	* down:释放态，表示mpu正在释放资源并停止工作。由外部控制
-	* end: 结束态，表示mpu已经完成所有工作，可以销毁。由内部控制
-	* exce:异常态，表示mpu存在异常已无法正常工作，需要销毁。由内部控制
-	* <Ambert 14-May-2024>
-	*/
-	enum class TaskStatusType : uint8_t {
-		raw = 0,
-		run,
-		down,
-		end,
-		exce
-	};
-
-	/*
-	* 任务状态封装
-	*/
-	class TaskStatus {
-	public:
-		TaskStatus() { };
-		operator bool() const { return type.load(std::memory_order_acquire) == TaskStatusType::run; }
-		TaskStatus& operator <<(TaskStatusType statusType) { 
-			this->type.store(statusType, std::memory_order_release);
-			return *this; 
-		}
-		TaskStatusType getStatus() const { return type.load(std::memory_order_acquire); }
-	private:
-		std::atomic<TaskStatusType> type{ TaskStatusType::raw };
-	};
-
 	struct MediaProcessData {
 		uint32_t readPktNum = 0;
 		uint32_t sendPktNum = 0;
@@ -65,7 +35,9 @@ namespace aom {
 		int64_t destroyingDuration = -1;
 		int64_t runningDuration = -1;
 
-		uint32_t updateCount = 0;
+		uint16_t maxChnl = 0;
+		uint16_t currentChnl = 0;
+		uint16_t openMic = 0;
 
 		std::string closeMethod = "HttpRequest";
 		std::string jobId = "";
@@ -75,12 +47,14 @@ namespace aom {
 	struct MpuContext {
 		std::string jobId;
 		int codecType;
+		int inSampleRate;
 		int outSampleRate;
 		int bitrate;
 		double interval; //ms
 		int payloadType;
 		MpuContext(std::string id, int type, int samplerate, int rate, int ti, int pt) 
-			: jobId(id), codecType(type), outSampleRate(samplerate), bitrate(rate), payloadType(pt) {
+			: jobId(id), codecType(type), inSampleRate(0), outSampleRate(samplerate), 
+			bitrate(rate), payloadType(pt) {
 			if (ti > 0) interval = ti;
 			else {
 				try {
@@ -97,6 +71,7 @@ namespace aom {
 
 	typedef std::unique_ptr<class MediaProcessUnit> UniqueMPU;
 	typedef std::function<HandleError(std::string)> RemoveCallback;
+	using UniqueMix = std::unique_ptr<AudioMixer>;
 	using namespace std::chrono_literals;
 
 	class MediaProcessUnit {
@@ -109,7 +84,10 @@ namespace aom {
 		TaskStatusType getStatus() const;
 		const MediaProcessData& getData() const;
 		int getChnlNum() const;
-
+		void addChannel(const std::string& id, const Point& src, const Point& dst, int sampleRate);
+		void removeChannel(const std::string& id);
+		void openChnlMic(const std::string&);
+		void closeChnlMic(const std::string&);
 	private:
 		std::thread workTh{};
 		std::thread eventTh{};
@@ -120,6 +98,8 @@ namespace aom {
 		RemoveCallback autoCloseCallback = nullptr;
 
 		int64_t startTime = 0;
+		int64_t noChnlTime = seeker::IniConfig::GetInteger("main", "auto_stop", 15);
+		int64_t waitChnlTime = 0;
 		bool isFirstFrameFlag = true;
 		bool isNoRecvFlag = false;
 		bool initDecFlag = true;
@@ -127,13 +107,15 @@ namespace aom {
 		std::atomic<bool> updateTemplate = false;
 
 		std::deque<std::unique_ptr<Event>> eventQue{};
+		std::unordered_map<std::string, UniqueAPC> APCs;
 		mutable std::shared_mutex eventQueLocker{};
-		std::unordered_map<int32_t, UniqueAPC> APCs;
+		mutable std::mutex apcLocker{};
+		mutable std::mutex mixerLocker{};
 
 		TaskStatus status;
 		MpuCtxPtr ctx;
 		MediaProcessData data;
-		//UniqueEPU epu = nullptr;
+		UniqueMix mixer;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 		const int noRtpTime = seeker::IniConfig::GetInteger("auto", "no_rtp_time", 30);
@@ -153,11 +135,13 @@ namespace aom {
 
 	class AddChnlEvent : public Event {
 	public:
-		AddChnlEvent(const AddChnlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+		AddChnlEvent(const AddChnlContext& c) : Event(JobHandleType::add), context(std::move(c)) {};
 
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+			master->addChannel(context.chnlId, Point{ context.listenIp, context.listenPort
+				}, Point{ context.dstIp, context.dstPort }, context.sampleRate);
 		};
 
 		AddChnlContext context;
@@ -165,7 +149,7 @@ namespace aom {
 
 	class RemoveChnlEvent : public Event {
 	public:
-		RemoveChnlEvent(const RemoveChnlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+		RemoveChnlEvent(const RemoveChnlContext& c) : Event(JobHandleType::remove), context(std::move(c)) {};
 
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;
@@ -177,7 +161,7 @@ namespace aom {
 
 	class OpenMicEvent : public Event {
 	public:
-		OpenMicEvent(const MicCtrlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+		OpenMicEvent(const MicCtrlContext& c) : Event(JobHandleType::open), context(std::move(c)) {};
 
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;
@@ -189,7 +173,7 @@ namespace aom {
 
 	class CloseMicEvent : public Event {
 	public:
-		CloseMicEvent(const MicCtrlContext& c) : Event(JobHandleType::update), context(std::move(c)) {};
+		CloseMicEvent(const MicCtrlContext& c) : Event(JobHandleType::close), context(std::move(c)) {};
 
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;

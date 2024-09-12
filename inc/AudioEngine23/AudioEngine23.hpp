@@ -1,3 +1,4 @@
+#pragma once
 #include "seeker/common.h"
 #include "seeker/loggerApi.h"
 #include "AdtsHeader.h"

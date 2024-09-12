@@ -99,8 +99,6 @@ namespace aom {
 	using mpuCloseForm = std::unordered_set<UniqueMPU>;
 	using mpuForm = std::unordered_map<JobId, UniqueMPU>;
 	using mpuIdList = std::vector<std::string>;
-	using Iterator = std::pair<std::__detail::_Node_iterator<std::pair<const std::string, UniqueMPU>, false, true>, bool>;
-
 
 	class MediaControlUnit {
 		MediaControlUnit();

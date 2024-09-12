@@ -18,6 +18,8 @@ endif (MSVC)
 find_package(Threads REQUIRED)
 
 set(Machine super9 CACHE STRING "machine type")
+option(USE_X_MIX "use X team mix tool" ON)
+message("Machine is ${Machine}, use xteam mix tool is ${USE_X_MIX}")
 
 if(UNIX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
@@ -81,5 +83,11 @@ message(STATUS "avdevice lib:${AVDEVICE_LIBRARY}")
 message(STATUS "avfilter lib:${AVFILTER_LIBRARY}")
 message(STATUS "swresample lib:${SWRESAMPLE_LIBRARY}")
 message(STATUS "swscale lib:${SWSCALE_LIBRARY}")
+
+if(USE_X_MIX)
+	include(${PROJECT_SOURCE_DIR}/inc/audioMix/audioMixlink.cmake)
+else()
+	include(${PROJECT_SOURCE_DIR}/inc/remix/remixlink.cmake)
+endif()
 
 add_subdirectory(src)

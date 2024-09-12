@@ -15,9 +15,46 @@
 
 #include <deque>
 #include <vector>
+#include <thread>
+#include <chrono>
 #include <functional>
 
 namespace aom {
+	struct Point {
+		std::string ip;
+		port_t port;
+	};
+
+	/*
+	* 任务状态类型
+	* raw: 初始态，表示mpu正在初始化并加载资源。由内部控制
+	* run: 运行态，表示mpu正在工作。初始态结束后自然成为运行态。外部可以修改
+	* down:释放态，表示mpu正在释放资源并停止工作。由外部控制
+	* end: 结束态，表示mpu已经完成所有工作，可以销毁。由内部控制
+	* exce:异常态，表示mpu存在异常已无法正常工作，需要销毁。由内部控制
+	* <Ambert 14-May-2024>
+	*/
+	enum class TaskStatusType : uint8_t {
+		raw = 0,
+		run,
+		down,
+		end,
+		exce
+	};
+
+	class TaskStatus {
+	public:
+		TaskStatus() { };
+		operator bool() const { return type.load(std::memory_order_acquire) == TaskStatusType::run; }
+		TaskStatus& operator <<(TaskStatusType statusType) {
+			this->type.store(statusType, std::memory_order_release);
+			return *this;
+		}
+		TaskStatusType getStatus() const { return type.load(std::memory_order_acquire); }
+	private:
+		std::atomic<TaskStatusType> type{ TaskStatusType::raw };
+	};
+
 	struct ChnlData {
 		uint32_t readPktNum = 0;
 		uint32_t sendPktNum = 0;
@@ -34,8 +71,6 @@ namespace aom {
 		uint32_t decodeCount = 0;
 		uint32_t renderCount = 0;
 		uint32_t encodeCount = 0;
-
-		port_t audioPort = 0;
 	};
 
 	using namespace seeker::rtp;
@@ -48,18 +83,42 @@ namespace aom {
 	typedef std::queue<std::vector<uint8_t>> NaluBuffer;
 
 	class AudioPorcessChnl {
+	public:
+		AudioPorcessChnl(const std::string& id, Point listen, Point dst, double interval);
+		~AudioPorcessChnl();
+		bool open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType);
+		void close();
+		const std::vector<int16_t>& getBuffer();
+		void setBuffer(const std::vector<int16_t>& buf);
+		void setMicType(int val);
+		TaskStatusType getStatus() const;
 	private:
-		std::string jobId;
-		Demuxer demuxer = nullptr;
-		Decoder decoder = nullptr;
-		Encoder encoder = nullptr;
-		Muxer muxer = nullptr;
+		Demuxer demuxer;
+		Decoder decoder;
+		Encoder encoder;
+		Muxer muxer;
+		RtpTrxer switcher;
+		RtpNotifier notifier;
 
+		TaskStatus status;
+		ChnlData data;
+		std::vector<uint8_t> srcBuffer{}; //源缓存区
+		std::vector<int16_t> buf{}; //源缓存区
+		std::vector<uint8_t> dstBuffer; //结果缓存区
+		mutable std::mutex srcBufLocker{};
+		mutable std::mutex dstBufLocker{};
 
-		int setDemuxer();
-		int setMuxer();
-		int setDecoder();
-		int setEncoder();
+		std::string chnlId;
+		Point listenPoint, dstPoint;
+		double timeInterval;
+		int micType = 0; //0:off, !0:on
+		int payloadType = 97;
+
+		std::thread work1Th{};
+
+		void recvAndDec();
+		int setDecoder(int sampleRate);
+		int setEncoder(int sampleRate);
 	};
 
 	using UniqueAPC = std::unique_ptr<AudioPorcessChnl>;

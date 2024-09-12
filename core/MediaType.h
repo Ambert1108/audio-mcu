@@ -19,7 +19,10 @@ namespace aom {
 	};
 
 	enum class JobHandleType : uint16_t {
-		update,
+		add,
+		remove,
+		open,
+		close,
 		stop
 	};
 

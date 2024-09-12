@@ -121,6 +121,8 @@ namespace aom {
   struct RemoveChnlContext {
     std::string jobId = "unknown";
     std::string chnlId = "unknown";
+    RemoveChnlContext() = default;
+    RemoveChnlContext(std::string jId, std::string cId) : jobId(jId), chnlId(cId) {}
   };
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RemoveChnlContext, jobId);
 
