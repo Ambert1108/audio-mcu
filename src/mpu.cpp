@@ -11,7 +11,7 @@ namespace aom {
 	}
 
 	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback)
-		: ctx(std::move(ptr)), autoCloseCallback(callback), APCs(10), mixer(nullptr) {
+		: ctx(std::move(ptr)), autoCloseCallback(callback), APCs(10), mixer(nullptr), encoder(nullptr) {
 		startTime = seeker::time::currentTime();
 		mixer = std::make_unique<AudioMixer>();
 		status << TaskStatusType::run;
@@ -121,12 +121,12 @@ namespace aom {
 
 		//将MPU状态置为释放态
 		status << TaskStatusType::down;
-		APCs.clear();
 
 		//阻塞的关闭所有线程
 		eventCondition.notify_all();
 		if (workTh.joinable()) workTh.join();
 		if (eventTh.joinable()) eventTh.join();
+		APCs.clear();
 
 		data.destroyingDuration = seeker::time::currentTime() - stopTimePoint;
 		data.runningDuration = seeker::time::currentTime() - startTime;
@@ -153,6 +153,11 @@ namespace aom {
 				
 			});
 		printTimer->Start();
+		FILE* pcmaFile = fopen("test.pcm", "wb");
+		setEncoder(ctx->outSampleRate);
+		AVFrame* frame = av_frame_alloc();
+		AVPacket* pkt = av_packet_alloc();
+		int64_t startTime = seeker::time::currentTime();
 		while (status) {
 			int64_t timePoint = seeker::time::currentTime();
 			while (APCs.empty() && status) {
@@ -164,36 +169,98 @@ namespace aom {
 				waitChnlTime = seeker::time::currentTime() - timePoint;
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
+			std::queue<std::string> mixList{};
+			std::unordered_map<std::string, std::vector<int16_t>> srcForm{};
+			std::unordered_map<std::string, std::vector<int16_t>> dstForm{};
 			// 向混音工具提供各个通道的音频数据
 			{
-				bool noPush = true;
+				bool noNeed = false;
 				uniqueLock lck(apcLocker);
+				// 判断最小混音长度，避免混音工具补0
+				size_t minLength = INT32_MAX;
 				for (const auto& [key, val] : APCs) {
 					if (val->getStatus() == TaskStatusType::exce) {
 						reportMediaInfo(std::make_unique<RemoveChnlEvent>(RemoveChnlContext(ctx->jobId, key)));
 						continue;
 					}
-					std::vector<int16_t> data = val->getBuffer();
-					if (data.empty()) {
-						I_LOG("input buffer is empty");
-						continue;
+					size_t length = val->getLength();
+					D_LOG("1 chnlId:{}, length:{}", key, length);
+					if (length < 100) {
+						if (APCs.size() == 1) {
+							noNeed = true;
+							break;
+						}
+						else continue;
+						//noNeed = true;
+						//break;
 					}
-					uniqueLock mlck(mixerLocker);
-					mixer->pushData(key, data);
-					noPush = false;
+					if (length < minLength) {
+						minLength = length;
+					}
+					mixList.push(key);
 				}
-				if (!noPush) {
-					for (const auto& [key, val] : APCs) {
-						uniqueLock mlck(mixerLocker);
-						val->setBuffer(mixer->getData());
+				if (noNeed || mixList.empty()) continue;
+
+				// 获取各通道解码结果
+				while (!mixList.empty()) {
+					auto& id = mixList.front();
+					auto it = APCs.find(id);
+					if (it == APCs.end()) continue;
+					std::vector<int16_t> data;
+					I_LOG("2 chnlId:{} length:{}", id, minLength);
+					it->second->getBuffer(data, minLength);
+					if (data.empty()) continue;
+					srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
+					mixList.pop();
+				}
+				//for (const auto& [key, val] : APCs) {
+				//	std::vector<int16_t> data;
+				//	val->getBuffer(data, minLength);
+				//	if (data.empty()) continue;
+				//	srcForm.insert(std::pair<std::string, std::vector<int16_t>>(key, data));
+				//}
+			}
+			// 向混音工具输入数据进行混音
+			for (auto& [key, val] : srcForm) {
+				uniqueLock mlck(mixerLocker);
+				mixer->pushData(key, val);
+			}
+
+			//获取混音结果
+			{
+				uniqueLock mlck(mixerLocker);
+				for (const auto& [key1, val1] : srcForm) {
+					std::queue<std::string> idForm{};
+					for (const auto& [key2, val2] : srcForm) {
+						if (key2 == key1) continue;
+						idForm.push(key2);
 					}
-					uniqueLock mlck(mixerLocker);
-					mixer->clearData();
+					dstForm.insert(std::pair<std::string, std::vector<int16_t>>(key1, mixer->getData(idForm)));
+				}
+				mixer->clearData();
+			}
+
+			uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
+			//将混音结果编码并下发给各通道发送
+			{
+				uniqueLock lck(apcLocker);
+				for (const auto& [key, val] : dstForm) {
+					auto it = APCs.find(key);
+					if (it == APCs.end()) continue;
+					frame->data[0] = (uint8_t*)val.data();
+					frame->nb_samples = val.size();
+					frame->format = AV_SAMPLE_FMT_S16;
+					frame->channels = 1;
+					frame->pts = ts;
+					encoder->getPacket(frame, pkt);
+					fwrite(pkt->data, 1, pkt->size, pcmaFile);
+					it->second->sendRtp(std::vector<uint8_t>(pkt->data, pkt->data + pkt->size), ts);
+					av_packet_unref(pkt);
+					av_frame_unref(frame);
 				}
 			}
-			int64_t use = (seeker::time::currentTime() - timePoint) * 1000; //us
-			if(use < 2130) std::this_thread::sleep_for(std::chrono::microseconds(2130 - use));
-			//std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			int32_t use = seeker::time::currentTime() - timePoint;
+			if(use < 25) std::this_thread::sleep_for(std::chrono::milliseconds(use));
 		}
 		W_LOG("[mpu::workingLoop->{}] Thread is open", ctx->jobId);
 			
@@ -264,5 +331,23 @@ namespace aom {
 			autoCloseCallback(ctx->jobId);
 		}
 		I_LOG("[mpu::eventHandle->{}] eventHandle thread is closed", ctx->jobId);
+	}
+
+	int MediaProcessUnit::setEncoder(int sampleRate) {
+		try {
+			if (encoder) {
+				encoder->close();
+				W_LOG("[mpu::setEncoder->{}] Encoder already exists, resetting...", ctx->jobId);
+			}
+			else encoder = std::make_unique<AudioEngine23::Encoder>();
+
+			encoder->open(sampleRate, AV_SAMPLE_FMT_S16, 1);
+			I_LOG("[mpu::setEncoder->{}] Encoder opened success.", ctx->jobId);
+		}
+		catch (std::exception& ex) {
+			E_LOG("[mpu::setEncoder->{}] get exception: {}", ctx->jobId, ex.what());
+			return -1;
+		}
+		return 0;
 	}
 }

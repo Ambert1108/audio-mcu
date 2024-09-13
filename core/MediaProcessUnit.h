@@ -116,6 +116,7 @@ namespace aom {
 		MpuCtxPtr ctx;
 		MediaProcessData data;
 		UniqueMix mixer;
+		Encoder encoder;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 		const int noRtpTime = seeker::IniConfig::GetInteger("auto", "no_rtp_time", 30);
@@ -124,7 +125,7 @@ namespace aom {
 		void output();
 		void workingLoop();
 		void eventHandle();
-
+		int setEncoder(int sampleRate);
 		friend class AddChnlEvent;
 	};
 

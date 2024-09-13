@@ -18,7 +18,7 @@ endif (MSVC)
 find_package(Threads REQUIRED)
 
 set(Machine super9 CACHE STRING "machine type")
-option(USE_X_MIX "use X team mix tool" ON)
+option(USE_X_MIX "use X team mix tool" OFF)
 message("Machine is ${Machine}, use xteam mix tool is ${USE_X_MIX}")
 
 if(UNIX)

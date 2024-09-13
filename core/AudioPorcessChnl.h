@@ -88,37 +88,33 @@ namespace aom {
 		~AudioPorcessChnl();
 		bool open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType);
 		void close();
-		const std::vector<int16_t>& getBuffer();
-		void setBuffer(const std::vector<int16_t>& buf);
+		size_t getLength();
+		void getBuffer(std::vector<int16_t>& dst, size_t length);
 		void setMicType(int val);
 		TaskStatusType getStatus() const;
+		void sendRtp(std::vector<uint8_t> payload, uint32_t ts);
 	private:
-		Demuxer demuxer;
 		Decoder decoder;
-		Encoder encoder;
-		Muxer muxer;
 		RtpTrxer switcher;
 		RtpNotifier notifier;
 
 		TaskStatus status;
 		ChnlData data;
-		std::vector<uint8_t> srcBuffer{}; //源缓存区
-		std::vector<int16_t> buf{}; //源缓存区
-		std::vector<uint8_t> dstBuffer; //结果缓存区
+		std::vector<int16_t> srcBuffer{}; //源缓存区
 		mutable std::mutex srcBufLocker{};
-		mutable std::mutex dstBufLocker{};
 
 		std::string chnlId;
 		Point listenPoint, dstPoint;
 		double timeInterval;
-		int micType = 0; //0:off, !0:on
+		std::atomic<int> micType = 0; //0:off, !0:on
 		int payloadType = 97;
+		uint16_t seqNum = 0;
+		uint32_t ssrc = 0;
 
 		std::thread work1Th{};
 
-		void recvAndDec();
+		void workingLoop();
 		int setDecoder(int sampleRate);
-		int setEncoder(int sampleRate);
 	};
 
 	using UniqueAPC = std::unique_ptr<AudioPorcessChnl>;
