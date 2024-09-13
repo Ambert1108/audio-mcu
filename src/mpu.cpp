@@ -172,9 +172,9 @@ namespace aom {
 			std::queue<std::string> mixList{};
 			std::unordered_map<std::string, std::vector<int16_t>> srcForm{};
 			std::unordered_map<std::string, std::vector<int16_t>> dstForm{};
+			bool noNeedMix = false;
 			// 向混音工具提供各个通道的音频数据
 			{
-				bool noNeed = false;
 				uniqueLock lck(apcLocker);
 				// 判断最小混音长度，避免混音工具补0
 				size_t minLength = INT32_MAX;
@@ -187,7 +187,7 @@ namespace aom {
 					D_LOG("1 chnlId:{}, length:{}", key, length);
 					if (length < 100) {
 						if (APCs.size() == 1) {
-							noNeed = true;
+							noNeedMix = true;
 							break;
 						}
 						else continue;
@@ -199,36 +199,38 @@ namespace aom {
 					}
 					mixList.push(key);
 				}
-				if (noNeed || mixList.empty()) continue;
+				if (mixList.empty()) noNeedMix = true;
 
-				// 获取各通道解码结果
-				while (!mixList.empty()) {
-					auto& id = mixList.front();
-					auto it = APCs.find(id);
-					if (it == APCs.end()) continue;
-					std::vector<int16_t> data;
-					I_LOG("2 chnlId:{} length:{}", id, minLength);
-					it->second->getBuffer(data, minLength);
-					if (data.empty()) continue;
-					srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
-					mixList.pop();
+				if (!noNeedMix) {
+					// 获取各通道解码结果
+					while (!mixList.empty()) {
+						auto& id = mixList.front();
+						auto it = APCs.find(id);
+						if (it == APCs.end()) continue;
+						std::vector<int16_t> data;
+						I_LOG("2 chnlId:{} length:{}", id, minLength);
+						it->second->getBuffer(data, minLength);
+						if (data.empty()) continue;
+						srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
+						mixList.pop();
+					}
+					//for (const auto& [key, val] : APCs) {
+					//	std::vector<int16_t> data;
+					//	val->getBuffer(data, minLength);
+					//	if (data.empty()) continue;
+					//	srcForm.insert(std::pair<std::string, std::vector<int16_t>>(key, data));
+					//}
 				}
-				//for (const auto& [key, val] : APCs) {
-				//	std::vector<int16_t> data;
-				//	val->getBuffer(data, minLength);
-				//	if (data.empty()) continue;
-				//	srcForm.insert(std::pair<std::string, std::vector<int16_t>>(key, data));
-				//}
-			}
-			// 向混音工具输入数据进行混音
-			for (auto& [key, val] : srcForm) {
-				uniqueLock mlck(mixerLocker);
-				mixer->pushData(key, val);
 			}
 
-			//获取混音结果
-			{
+			if(!noNeedMix) {
 				uniqueLock mlck(mixerLocker);
+				// 向混音工具输入数据进行混音
+				for (auto& [key, val] : srcForm) {
+					mixer->pushData(key, val);
+				}
+
+				//获取混音结果
 				for (const auto& [key1, val1] : srcForm) {
 					std::queue<std::string> idForm{};
 					for (const auto& [key2, val2] : srcForm) {

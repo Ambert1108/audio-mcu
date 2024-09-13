@@ -89,15 +89,14 @@ namespace aom {
 		AVPacket* pkt = av_packet_alloc();
 		AVFrame* frame = av_frame_alloc();
 		int64_t timePoint = 0;
-		FILE* outFile = fopen("1.pcm", "wb");
 		try {
 			I_LOG("[apc::recvAndDec->{}] thread is open, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
 			while (status) {
 				// 1.判断麦克风状态，闭麦状态下不收流
-				if (micType.load() == 0) {
-					std::this_thread::sleep_for(std::chrono::milliseconds(1));
-					continue;
-				}
+				//if (micType.load() == 0) {
+				//	std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				//	continue;
+				//}
 				timePoint = seeker::time::currentTime();
 				// 2.接收音频流
 				switcher->receiveRtp(recvQueue);
