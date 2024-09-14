@@ -41,7 +41,7 @@ namespace aom {
 			D_LOG("[apc::getBuffer->{}] get src buffer is empty, size {}", chnlId, srcBuffer.size());
 			return;
 		}
-		I_LOG("length={}", length);
+		D_LOG("length={}", length);
 		dst.assign(srcBuffer.begin(), srcBuffer.begin() + length);
 		srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + length);
 	}

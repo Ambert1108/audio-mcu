@@ -27,7 +27,7 @@ namespace aom {
 		//判断关闭线程是否可执行并执行完毕
 		if (stopTh.joinable()) stopTh.join();
 		
-		//MPU转为exce态或未收到RTP包时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
+		//MPU转为exce态或长时间无通道时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
 		stop();
 
 		I_LOG("[MPU::destory] jobId={} success", ctx->jobId);
@@ -186,13 +186,13 @@ namespace aom {
 					size_t length = val->getLength();
 					D_LOG("1 chnlId:{}, length:{}", key, length);
 					if (length < 100) {
-						if (APCs.size() == 1) {
-							noNeedMix = true;
-							break;
-						}
-						else continue;
-						//noNeed = true;
-						//break;
+						//if (APCs.size() == 1) {
+						//	noNeedMix = true;
+						//	break;
+						//}
+						//else continue;
+						noNeedMix = true;
+						break;
 					}
 					if (length < minLength) {
 						minLength = length;
@@ -208,7 +208,7 @@ namespace aom {
 						auto it = APCs.find(id);
 						if (it == APCs.end()) continue;
 						std::vector<int16_t> data;
-						I_LOG("2 chnlId:{} length:{}", id, minLength);
+						D_LOG("2 chnlId:{} length:{}", id, minLength);
 						it->second->getBuffer(data, minLength);
 						if (data.empty()) continue;
 						srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
@@ -294,26 +294,22 @@ namespace aom {
 						break;
 
 					case JobHandleType::add:
-						I_LOG("[mpu::eventHandle->{}] handle add chnl event", ctx->jobId);
 						each->handle(this);
 						data.currentChnl++;
 						if (data.currentChnl > data.maxChnl) data.maxChnl = data.currentChnl;
 						break;
 
 					case JobHandleType::remove:
-						I_LOG("[mpu::eventHandle->{}] handle remove chnl event", ctx->jobId);
 						each->handle(this);
 						data.currentChnl--;
 						break;
 
 					case JobHandleType::open:
-						I_LOG("[mpu::eventHandle->{}] handle open mic event", ctx->jobId);
 						each->handle(this);
 						data.openMic++;
 						break;
 
 					case JobHandleType::close:
-						I_LOG("[mpu::eventHandle->{}] handle close mic event", ctx->jobId);
 						each->handle(this);
 						data.openMic--;
 						break;

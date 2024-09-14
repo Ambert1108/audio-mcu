@@ -143,6 +143,7 @@ namespace aom {
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
 			master->addChannel(context.chnlId, Point{ context.listenIp, context.listenPort
 				}, Point{ context.dstIp, context.dstPort }, context.sampleRate);
+			I_LOG("[mpu::eventHandle->{}:{}] handle add chnl event", context.jobId, context.chnlId);
 		};
 
 		AddChnlContext context;
@@ -155,6 +156,8 @@ namespace aom {
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+			master->removeChannel(context.chnlId);
+			I_LOG("[mpu::eventHandle->{}:{}] handle remove chnl event", context.jobId, context.chnlId);
 		};
 
 		RemoveChnlContext context;
@@ -167,6 +170,8 @@ namespace aom {
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+			master->openChnlMic(context.chnlId);
+			I_LOG("[mpu::eventHandle->{}:{}] handle open mic event", context.jobId, context.chnlId);
 		};
 
 		MicCtrlContext context;
@@ -179,6 +184,8 @@ namespace aom {
 		void handle(void* ptr) override {
 			MediaProcessUnit* master = nullptr;
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+			master->closeChnlMic(context.chnlId);
+			I_LOG("[mpu::eventHandle->{}:{}] handle close mic event", context.jobId, context.chnlId);
 		};
 
 		MicCtrlContext context;
