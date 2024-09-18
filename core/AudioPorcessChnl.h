@@ -18,6 +18,7 @@
 #include <thread>
 #include <chrono>
 #include <functional>
+#include <cmath>
 
 namespace aom {
 	struct Point {
@@ -93,6 +94,8 @@ namespace aom {
 		void setMicType(int val);
 		TaskStatusType getStatus() const;
 		void sendRtp(std::vector<uint8_t> payload, uint32_t ts);
+		bool ready() const;
+		bool micOpen() const;
 	private:
 		Decoder decoder;
 		RtpTrxer switcher;
@@ -102,6 +105,7 @@ namespace aom {
 		ChnlData data;
 		std::vector<int16_t> srcBuffer{}; //源缓存区
 		mutable std::mutex srcBufLocker{};
+		std::atomic<bool> chnlReady{ false };
 
 		std::string chnlId;
 		Point listenPoint, dstPoint;

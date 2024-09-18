@@ -128,7 +128,7 @@ namespace aom {
 
   struct MicCtrlContext {
     std::string jobId = "unknown";
-    std::string chnlId = "unknown";
+    std::string channelId = "unknown";
   };
-  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MicCtrlContext, jobId, chnlId);
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MicCtrlContext, jobId, channelId);
 }

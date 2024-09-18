@@ -1,6 +1,22 @@
 #include "AudioPorcessChnl.h"
 
 namespace aom {
+	double calculateRMS(const std::vector<int16_t>& samples) {
+		double sum = 0.0;
+		for (const auto& sample : samples) {
+			sum += sample * sample;  // 计算每个样本的平方
+		}
+		double mean = sum / samples.size();  // 计算均值
+		return std::sqrt(mean);  // 返回均方根值
+	}
+
+	double calculateVolume(const std::vector<int16_t>& samples) {
+		double rms = calculateRMS(samples);
+		// 将 RMS 值转换为分贝（dB）
+		if (rms <= 0) return 0;
+		return 20 * std::log10(rms / 32767.0);  // 取 16 位 PCM 的最大值
+	}
+
 	AudioPorcessChnl::AudioPorcessChnl(const std::string& id, Point listen, Point dst, double interval)
 		: chnlId(id), listenPoint(listen), dstPoint(dst), timeInterval(interval), decoder(nullptr),
 		notifier(nullptr), switcher(nullptr) {
@@ -37,11 +53,10 @@ namespace aom {
 
 	void AudioPorcessChnl::getBuffer(std::vector<int16_t>& dst, size_t length) {
 		lockGuard lck(srcBufLocker);
-		if (srcBuffer.empty()) {
+		if (srcBuffer.size() < length) {
 			D_LOG("[apc::getBuffer->{}] get src buffer is empty, size {}", chnlId, srcBuffer.size());
 			return;
 		}
-		D_LOG("length={}", length);
 		dst.assign(srcBuffer.begin(), srcBuffer.begin() + length);
 		srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + length);
 	}
@@ -55,6 +70,10 @@ namespace aom {
 		std::deque<Rtp> sendQueue{ std::move(rtpPacket) };
 		switcher->sendRtp(sendQueue);
 	}
+
+	bool AudioPorcessChnl::ready() const { return chnlReady.load(); }
+
+	bool AudioPorcessChnl::micOpen() const { return micType != 0 ? true : false; }
 
 	void AudioPorcessChnl::workingLoop() {
 		try {
@@ -90,13 +109,14 @@ namespace aom {
 		AVFrame* frame = av_frame_alloc();
 		int64_t timePoint = 0;
 		try {
+			chnlReady.store(true);
 			I_LOG("[apc::recvAndDec->{}] thread is open, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
 			while (status) {
 				// 1.判断麦克风状态，闭麦状态下不收流
-				//if (micType.load() == 0) {
-				//	std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				//	continue;
-				//}
+				if (micType.load() == 0) {
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					continue;
+				}
 				timePoint = seeker::time::currentTime();
 				// 2.接收音频流
 				switcher->receiveRtp(recvQueue);
@@ -164,8 +184,10 @@ namespace aom {
 			}
 		}
 		catch (std::exception& ex) {
-
+			E_LOG("[apc::recvAndDec->{}] get exception: {}", chnlId, ex.what());
+			status << TaskStatusType::exce;
 		}
+		I_LOG("[apc::recvAndDec->{}] thread is close, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
 	}
 
 	int AudioPorcessChnl::setDecoder(int sampleRate) {

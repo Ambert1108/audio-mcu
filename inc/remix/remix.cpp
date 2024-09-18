@@ -146,7 +146,7 @@ namespace Remix {
         for (int m = 0; m < maxLength; m++) {
             int16_t mixed = 0;
             for (int n = 0; n < audioData.size(); n++) {
-                int16_t sample = (m > audioData[n].size() ? 0 : audioData[n][m]); //补0：如果 m超出了 audioData[n]的有效索引范围，则将 sample设置为 0
+                int16_t sample = (m + 1 > audioData[n].size() ? 0 : audioData[n][m]); //补0：如果 m超出了 audioData[n]的有效索引范围，则将 sample设置为 0
                 mixed += sample;
             }
             //if (mixed > MAX_PCM_VALUE) {

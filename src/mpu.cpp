@@ -27,7 +27,7 @@ namespace aom {
 		//判断关闭线程是否可执行并执行完毕
 		if (stopTh.joinable()) stopTh.join();
 		
-		//MPU转为exce态或长时间无通道时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
+		//MPU转为exce态或未收到RTP包时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
 		stop();
 
 		I_LOG("[MPU::destory] jobId={} success", ctx->jobId);
@@ -157,6 +157,7 @@ namespace aom {
 		setEncoder(ctx->outSampleRate);
 		AVFrame* frame = av_frame_alloc();
 		AVPacket* pkt = av_packet_alloc();
+		int16_t lengthStandard = ctx->outSampleRate / 47;
 		int64_t startTime = seeker::time::currentTime();
 		while (status) {
 			int64_t timePoint = seeker::time::currentTime();
@@ -170,45 +171,54 @@ namespace aom {
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 			std::queue<std::string> mixList{};
-			std::unordered_map<std::string, std::vector<int16_t>> srcForm{};
-			std::unordered_map<std::string, std::vector<int16_t>> dstForm{};
-			bool noNeedMix = false;
+			std::unordered_map<std::string, std::vector<int16_t>> srcForm{}; //需要混音的列表
+			std::unordered_map<std::string, std::vector<int16_t>> dstForm{}; //需要编码发送的列表
+			bool needMix = true;
+			bool needJump = false;
+			size_t lengthStandard = ctx->outSampleRate / 47; //参考标准长度
+			size_t minLength = INT32_MAX;
 			// 向混音工具提供各个通道的音频数据
 			{
 				uniqueLock lck(apcLocker);
 				// 判断最小混音长度，避免混音工具补0
 				size_t minLength = INT32_MAX;
 				for (const auto& [key, val] : APCs) {
+					// 如果通道尚未初始化完成，跳过该通道
+					if (!val->ready()) continue;
+					// 如果通道异常，自动移除
 					if (val->getStatus() == TaskStatusType::exce) {
 						reportMediaInfo(std::make_unique<RemoveChnlEvent>(RemoveChnlContext(ctx->jobId, key)));
 						continue;
 					}
+					// 插入需要获取混音的通道
+					dstForm.insert(std::pair<std::string, std::vector<int16_t>>(key, {}));
+					// 如果通道麦克风为闭麦状态，跳过
+					if (!val->micOpen()) continue;
+
 					size_t length = val->getLength();
-					D_LOG("1 chnlId:{}, length:{}", key, length);
+					//if (length < lengthStandard)
 					if (length < 100) {
-						//if (APCs.size() == 1) {
-						//	noNeedMix = true;
-						//	break;
-						//}
-						//else continue;
-						noNeedMix = true;
+						needJump = true;
 						break;
 					}
-					if (length < minLength) {
+					if (minLength > length) {
 						minLength = length;
 					}
 					mixList.push(key);
 				}
-				if (mixList.empty()) noNeedMix = true;
+				// 某通道数据量不足，跳过循环
+				if (needJump) continue;
 
-				if (!noNeedMix) {
+				// 没有待混音通道，则无需混音
+				if (mixList.empty()) needMix = false;
+
+				if (needMix) {
 					// 获取各通道解码结果
 					while (!mixList.empty()) {
 						auto& id = mixList.front();
 						auto it = APCs.find(id);
 						if (it == APCs.end()) continue;
 						std::vector<int16_t> data;
-						D_LOG("2 chnlId:{} length:{}", id, minLength);
 						it->second->getBuffer(data, minLength);
 						if (data.empty()) continue;
 						srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
@@ -218,32 +228,41 @@ namespace aom {
 					//	std::vector<int16_t> data;
 					//	val->getBuffer(data, minLength);
 					//	if (data.empty()) continue;
-					//	srcForm.insert(std::pair<std::string, std::vector<int16_t>>(key, data));
+					//	srcForm.at(key) = data;
 					//}
 				}
 			}
 
-			if(!noNeedMix) {
-				uniqueLock mlck(mixerLocker);
+			if (needMix) {
 				// 向混音工具输入数据进行混音
 				for (auto& [key, val] : srcForm) {
+					uniqueLock mlck(mixerLocker);
 					mixer->pushData(key, val);
 				}
 
 				//获取混音结果
-				for (const auto& [key1, val1] : srcForm) {
-					std::queue<std::string> idForm{};
-					for (const auto& [key2, val2] : srcForm) {
-						if (key2 == key1) continue;
-						idForm.push(key2);
+				{
+					uniqueLock mlck(mixerLocker);
+					for (const auto& [key1, val1] : dstForm) {
+						std::queue<std::string> idForm{};
+						for (const auto& [key2, val2] : dstForm) {
+							if (key2 == key1) continue;
+							idForm.push(key2);
+						}
+						dstForm.at(key1) = mixer->getData(idForm);
 					}
-					dstForm.insert(std::pair<std::string, std::vector<int16_t>>(key1, mixer->getData(idForm)));
+					mixer->clearData();
 				}
-				mixer->clearData();
+			}
+			else {
+				// 如果不需要混音，则所有通道都发送静音帧
+				for (const auto& [key, val] : dstForm) {
+					dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
+				}
 			}
 
 			uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
-			//将混音结果编码并下发给各通道发送
+			//将可能的结果编码并下发给各通道发送
 			{
 				uniqueLock lck(apcLocker);
 				for (const auto& [key, val] : dstForm) {
@@ -262,7 +281,7 @@ namespace aom {
 				}
 			}
 			int32_t use = seeker::time::currentTime() - timePoint;
-			if(use < 25) std::this_thread::sleep_for(std::chrono::milliseconds(use));
+			if(use < 21) std::this_thread::sleep_for(std::chrono::milliseconds(21 - use));
 		}
 		W_LOG("[mpu::workingLoop->{}] Thread is open", ctx->jobId);
 			
@@ -294,22 +313,26 @@ namespace aom {
 						break;
 
 					case JobHandleType::add:
+						I_LOG("[mpu::eventHandle->{}] handle add chnl event", ctx->jobId);
 						each->handle(this);
 						data.currentChnl++;
 						if (data.currentChnl > data.maxChnl) data.maxChnl = data.currentChnl;
 						break;
 
 					case JobHandleType::remove:
+						I_LOG("[mpu::eventHandle->{}] handle remove chnl event", ctx->jobId);
 						each->handle(this);
 						data.currentChnl--;
 						break;
 
 					case JobHandleType::open:
+						I_LOG("[mpu::eventHandle->{}] handle open mic event", ctx->jobId);
 						each->handle(this);
 						data.openMic++;
 						break;
 
 					case JobHandleType::close:
+						I_LOG("[mpu::eventHandle->{}] handle close mic event", ctx->jobId);
 						each->handle(this);
 						data.openMic--;
 						break;
