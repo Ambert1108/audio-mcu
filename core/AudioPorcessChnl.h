@@ -114,6 +114,7 @@ namespace aom {
 		int payloadType = 97;
 		uint16_t seqNum = 0;
 		uint32_t ssrc = 0;
+		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 
 		std::thread work1Th{};
 

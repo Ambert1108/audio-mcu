@@ -168,7 +168,7 @@ namespace AudioEngine23 {
       /* send the frame for encoding */
       ret = avcodec_send_frame(c, input);
       if (ret < 0) {
-        E_LOG("Error sending the frame to the encoder");
+        E_LOG("Error sending the frame to the encoder, ret={}", ret);
         return -1;
       }
 

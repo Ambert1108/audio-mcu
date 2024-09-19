@@ -108,26 +108,46 @@ namespace aom {
 		AVPacket* pkt = av_packet_alloc();
 		AVFrame* frame = av_frame_alloc();
 		int64_t timePoint = 0;
+		int64_t timeTotal = 0;
+		int64_t rtpTotal = 0;
+		double dbTotal = 0.0;
+		int32_t timeCount = 0;
 		try {
+			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
+				float timeAvg = (float)timeTotal / timeCount;
+				float rtpAvg = (float)rtpTotal / timeCount;
+				float dbAvg = (float)dbTotal / timeCount;
+				I_LOG("APC::check->{} loop avg use {}ms, process {} rtp pkt, avg {}db", chnlId, timeAvg, rtpAvg, dbAvg);
+				timeTotal = 0;
+				rtpTotal = 0;
+				dbTotal = 0.0;
+				timeCount = 0;
+			});
+			printTimer->Start();
 			chnlReady.store(true);
 			I_LOG("[apc::recvAndDec->{}] thread is open, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
 			while (status) {
 				// 1.判断麦克风状态，闭麦状态下不收流
-				if (micType.load() == 0) {
-					std::this_thread::sleep_for(std::chrono::milliseconds(1));
-					continue;
-				}
+				//if (micType.load() == 0) {
+				//	std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				//	continue;
+				//}
 				timePoint = seeker::time::currentTime();
+				int64_t usePoint = seeker::time::currentTime();
 				// 2.接收音频流
 				switcher->receiveRtp(recvQueue);
 
-				// 3.若未能收到音频流，等待25ms后重新收流
+				// 3.若未能收到音频流，等待1ms后重新收流
 				while (recvQueue.empty() && status) {
-					notifier->waitNotify(25);
+					notifier->waitNotify(1);
 					switcher->receiveRtp(recvQueue);
 				}
+				int t = seeker::time::currentTime() - usePoint;
+				if (t > 40) W_LOG("chnlId:{} recv use {}ms", chnlId, t);
 				if (!status) break;
 				while (!recvQueue.empty()) {
+					rtpTotal++;
+					usePoint = seeker::time::currentTime();
 					auto& receivedRtp = recvQueue.front();
 					auto& rtpData = receivedRtp.element;
 					auto& from = receivedRtp.from;
@@ -137,16 +157,16 @@ namespace aom {
 
 					// 4.判断音频RTP包seq是否连续，若不连续说明丢包，需要补0
 					uint16_t seq = (int)rtpData.seq();
-					if (lastSeq == 0) lastSeq = seq;
-					else {
-						while (seq > lastSeq + 1) {
-							if (size) {
-								lockGuard lck(srcBufLocker);
-								srcBuffer.insert(srcBuffer.end(), size / 2, 0);
-							}
-							lastSeq++;
-						}
-					}
+					//if (lastSeq == 0) lastSeq = seq;
+					//else {
+					//	while (seq > lastSeq + 1) {
+					//		if (size) {
+					//			lockGuard lck(srcBufLocker);
+					//			srcBuffer.insert(srcBuffer.end(), size / 2, 0);
+					//		}
+					//		lastSeq++;
+					//	}
+					//}
 					int mark = (int)rtpData.marker();
 					rtpData.getPayload(payloadBuf);
 					uint32_t ts = rtpData.timestamp();
@@ -171,22 +191,35 @@ namespace aom {
 					int32_t inc = ts - lastTs;
 					D_LOG("seq:{}, ts:{}, increment:{}, audio frame size is {}", seq, ts, inc, size);
 					lastTs = ts;
-
+					int t = seeker::time::currentTime() - usePoint;
+					if (t > 5) W_LOG("chnlId:{} dec use {}ms", chnlId, t);
+					usePoint = seeker::time::currentTime();
 					// 7.将解码数据存入源缓存区中
 					{
 						lockGuard lck(srcBufLocker);
 						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
+						if (srcBuffer.size() > (int64_t)44100 / 47 * 2) {
+							W_LOG("chnId:{} buffer size is {}", chnlId, srcBuffer.size());
+							srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
+						}
+						dbTotal += calculateVolume(srcBuffer);
 					}
+					t = seeker::time::currentTime() - usePoint;
+					if (t > 5) W_LOG("chnlId:{} insert use {}ms", chnlId, t);
 					av_frame_unref(frame);
 					av_packet_unref(pkt);
 					recvQueue.pop_front();
 				}
+				int64_t loopTime = seeker::time::currentTime() - timePoint;
+				timeTotal += loopTime;
+				timeCount++;
 			}
 		}
 		catch (std::exception& ex) {
 			E_LOG("[apc::recvAndDec->{}] get exception: {}", chnlId, ex.what());
 			status << TaskStatusType::exce;
 		}
+		if (printTimer) printTimer->Cancel();
 		I_LOG("[apc::recvAndDec->{}] thread is close, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
 	}
 
@@ -199,7 +232,7 @@ namespace aom {
 			else {
 				decoder = std::make_unique<AudioEngine23::Decoder>();
 			}
-			decoder->open(sampleRate, AV_SAMPLE_FMT_S16, 1);
+			decoder->open(44100, AV_SAMPLE_FMT_S16, 1);
 			I_LOG("[apc::setDecoder->{}] Decoder opened success", chnlId);
 		}
 		catch (std::exception& ex) {
