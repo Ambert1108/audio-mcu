@@ -112,6 +112,7 @@ namespace aom {
 		std::string chnlId;
 		Point listenPoint, dstPoint;
 		double timeInterval;
+		std::atomic<float> db = 0.0f;
 		std::atomic<int> micType = 0; //0:off, !0:on
 		int payloadType = 97;
 		uint16_t seqNum = 0;

@@ -12,9 +12,11 @@ namespace aom {
 
 	double calculateVolume(const std::vector<int16_t>& samples) {
 		double rms = calculateRMS(samples);
-		// 将 RMS 值转换为分贝（dB）
-		if (rms <= 0) return 0;
-		return 20 * std::log10(rms / 32767.0);  // 取 16 位 PCM 的最大值
+		// 防止对 0 取对数
+		if (rms <= 0) {
+			return -std::numeric_limits<double>::infinity(); // 负无穷大表示无声
+		}
+		return 20.0 * std::log10(rms);
 	}
 
 	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval)
@@ -48,8 +50,7 @@ namespace aom {
 	}
 
 	double AudioPorcessChnl::getVolume() const {
-		lockGuard lck(srcBufLocker);
-		return calculateVolume(srcBuffer);
+		return db.load();
 	}
 
 	size_t AudioPorcessChnl::getLength() const {
@@ -60,6 +61,7 @@ namespace aom {
 	void AudioPorcessChnl::getBuffer(std::vector<int16_t>& dst, size_t length) {
 		lockGuard lck(srcBufLocker);
 		if (srcBuffer.size() < length) {
+			//srcBuffer.clear();
 			D_LOG("[apc::getBuffer->{}:{}] get src buffer is empty, size {}", jobId, chnlId, srcBuffer.size());
 			return;
 		}
@@ -122,7 +124,8 @@ namespace aom {
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				float timeAvg = (float)timeTotal / timeCount;
 				float rtpAvg = (float)rtpTotal / timeCount;
-				float dbAvg = (float)dbTotal / timeCount;
+				float dbAvg = dbTotal == 0 ? 0.0f : (float)dbTotal / timeCount;
+				db.store(dbAvg);
 				I_LOG("APC::check->{}:{} loop avg use {}ms, process {} rtp pkt, avg {}db", jobId, chnlId, timeAvg, rtpAvg, dbAvg);
 				timeTotal = 0;
 				rtpTotal = 0;
@@ -149,7 +152,7 @@ namespace aom {
 					switcher->receiveRtp(recvQueue);
 				}
 				int t = seeker::time::currentTime() - usePoint;
-				if (t > 40) W_LOG("[apc::recvAndDec->{}:{}] recv use {}ms", jobId, chnlId, t);
+				if (t > 65) W_LOG("[apc::recvAndDec->{}:{}] recv use {}ms", jobId, chnlId, t);
 				if (!status) break;
 				while (!recvQueue.empty()) {
 					rtpTotal++;
@@ -208,11 +211,11 @@ namespace aom {
 					// 7.将解码数据存入源缓存区中
 					{
 						lockGuard lck(srcBufLocker);
-						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
 						if (srcBuffer.size() > (int64_t)44100 / 47 * 2) {
 							W_LOG("[apc::recvAndDec->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
 							srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
 						}
+						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
 						dbTotal += calculateVolume(srcBuffer);
 					}
 					t = seeker::time::currentTime() - usePoint;

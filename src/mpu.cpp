@@ -155,6 +155,7 @@ namespace aom {
 		int64_t timePoint = 0;
 		int64_t timeTotal = 0;
 		int32_t timeCount = 0;
+		int noNeedCount = 0;
 		try {
 			//每mpucheckInterval秒计算MPU相关参数
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
@@ -180,7 +181,6 @@ namespace aom {
 				std::unordered_map<std::string, std::vector<int16_t>> srcForm{}; //需要混音的列表
 				std::unordered_map<std::string, std::vector<int16_t>> dstForm{}; //需要编码发送的列表
 				bool needMix = true;
-				bool needJump = false;
 				size_t lengthStandard = 44100 / 47; //参考标准长度
 				size_t minLength = INT32_MAX;
 				// 向混音工具提供各个通道的音频数据
@@ -205,48 +205,48 @@ namespace aom {
 						//if (!val->micOpen()) continue;
 
 						size_t length = val->getLength();
-						//if (length < lengthStandard)
-						if (length < 10) {
-							needJump = true;
-							break;
-						}
-						if (minLength > length) {
-							minLength = length;
+						// 所有小于标准长度的通道，本次不参与混音
+						if (length < lengthStandard) {
+							D_LOG("chnlId:{} length is {}", key, length);
+							continue;
 						}
 						mixList.push(key);
 					}
-					// 某通道数据量不足，跳过循环
-					if (needJump) {
-						//W_LOG("jump this loop");
-						std::this_thread::sleep_for(std::chrono::milliseconds(1));
-						continue;
-					}
-					//I_LOG("1");
 
-					// 没有待混音通道，则无需混音
-					if (mixList.empty()) needMix = false;
+					if (mixList.empty()) {
+						// 没有待混音通道，增加一次不混音计数
+						++noNeedCount;
+						// 当不混音计数达到5次（大概耗时105ms），则给各通道发送静音帧
+						// 否则，跳过本次循环
+						if (noNeedCount >= 5) {
+							needMix = false;
+							noNeedCount = 0;
+						}
+						else {
+							int32_t use = seeker::time::currentTime() - timePoint;
+							if (use < 21) std::this_thread::sleep_for(std::chrono::milliseconds(21 - use));
+							timeTotal += seeker::time::currentTime() - timePoint;
+							timeCount++;
+							continue;
+						}
+					}
+					else noNeedCount = 0;
 
 					if (needMix) {
 						// 获取各通道解码结果
 						while (!mixList.empty()) {
 							auto& id = mixList.front();
+							mixList.pop();
 							auto it = APCs.find(id);
 							if (it == APCs.end()) continue;
 							std::vector<int16_t> data;
-							it->second->getBuffer(data, minLength);
+							//it->second->getBuffer(data, minLength);
+							it->second->getBuffer(data, lengthStandard);
 							if (data.empty()) continue;
 							srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
-							mixList.pop();
 						}
-						//for (const auto& [key, val] : APCs) {
-						//	std::vector<int16_t> data;
-						//	val->getBuffer(data, minLength);
-						//	if (data.empty()) continue;
-						//	srcForm.at(key) = data;
-						//}
 					}
 				}
-
 				if (needMix) {
 					// 向混音工具输入数据进行混音
 					for (auto& [key, val] : srcForm) {
@@ -275,8 +275,8 @@ namespace aom {
 					for (const auto& [key, val] : dstForm) {
 						dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
 					}
+					W_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
 				}
-
 				uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
 				//将可能的结果编码并下发给各通道发送
 				{
@@ -284,7 +284,7 @@ namespace aom {
 					for (const auto& [key, val] : dstForm) {
 						auto it = APCs.find(key);
 						if (it == APCs.end()) continue;
-						if (val.empty()) W_LOG("id:{} val empty", key);
+						if (val.empty()) W_LOG("[mpu::workingLoop->{}:{}] data is empty", ctx->jobId, key);
 						frame->data[0] = (uint8_t*)val.data();
 						frame->nb_samples = val.size();
 						frame->format = AV_SAMPLE_FMT_S16;
