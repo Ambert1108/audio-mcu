@@ -89,7 +89,7 @@ namespace aom {
 		~AudioPorcessChnl();
 		bool open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType);
 		void close();
-		double getVolume() const;
+		float getVolume() const;
 		size_t getLength() const;
 		void getBuffer(std::vector<int16_t>& dst, size_t length);
 		void setMicType(int val);

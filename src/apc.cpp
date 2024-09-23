@@ -49,7 +49,7 @@ namespace aom {
 		I_LOG("[apc::close->{}:{}] channel close success", jobId, chnlId);
 	}
 
-	double AudioPorcessChnl::getVolume() const {
+	float AudioPorcessChnl::getVolume() const {
 		return db.load();
 	}
 

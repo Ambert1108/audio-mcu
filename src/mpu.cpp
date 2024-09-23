@@ -156,13 +156,15 @@ namespace aom {
 		int64_t timeTotal = 0;
 		int32_t timeCount = 0;
 		int noNeedCount = 0;
+		std::string mixId{};
 		try {
 			//每mpucheckInterval秒计算MPU相关参数
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				float timeAvg = (float)timeTotal / timeCount;
-				I_LOG("MPU::check->{} loop use avg {}ms", ctx->jobId, timeAvg);
+				I_LOG("MPU::check->{} loop use avg {}ms, mix id:{}", ctx->jobId, timeAvg, mixId);
 				timeTotal = 0;
 				timeCount = 0;
+				mixId.clear();
 			});
 			printTimer->Start();
 			W_LOG("[mpu::workingLoop->{}] Thread is open", ctx->jobId);
@@ -177,17 +179,14 @@ namespace aom {
 					waitChnlTime = seeker::time::currentTime() - timePoint;
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
-				std::queue<std::string> mixList{};
+				std::vector<std::pair<std::string, float>> chnlList; //通道分贝排序列表
 				std::unordered_map<std::string, std::vector<int16_t>> srcForm{}; //需要混音的列表
 				std::unordered_map<std::string, std::vector<int16_t>> dstForm{}; //需要编码发送的列表
 				bool needMix = true;
 				size_t lengthStandard = 44100 / 47; //参考标准长度
-				size_t minLength = INT32_MAX;
-				// 向混音工具提供各个通道的音频数据
 				{
 					uniqueLock lck(apcLocker);
-					// 判断最小混音长度，避免混音工具补0
-					size_t minLength = INT32_MAX;
+					// 判断各通道数据大小是否符合标准，不符则跳过该通道混音
 					for (const auto& [key, val] : APCs) {
 						// 如果通道尚未初始化完成，跳过该通道
 						if (!val->ready()) {
@@ -199,8 +198,9 @@ namespace aom {
 							reportMediaInfo(std::make_unique<RemoveChnlEvent>(RemoveChnlContext(ctx->jobId, key)));
 							continue;
 						}
-						// 插入需要获取混音的通道
+						// 插入需要获取混音结果的通道
 						dstForm.insert(std::pair<std::string, std::vector<int16_t>>(key, {}));
+
 						// 如果通道麦克风为闭麦状态，跳过
 						//if (!val->micOpen()) continue;
 
@@ -210,10 +210,11 @@ namespace aom {
 							D_LOG("chnlId:{} length is {}", key, length);
 							continue;
 						}
-						mixList.push(key);
+						// 具备混音条件的通道，获取分贝后插入排序列表
+						chnlList.push_back(std::pair<std::string, float>(key, val->getVolume()));
 					}
 
-					if (mixList.empty()) {
+					if (chnlList.empty()) {
 						// 没有待混音通道，增加一次不混音计数
 						++noNeedCount;
 						// 当不混音计数达到5次（大概耗时105ms），则给各通道发送静音帧
@@ -233,17 +234,26 @@ namespace aom {
 					else noNeedCount = 0;
 
 					if (needMix) {
-						// 获取各通道解码结果
-						while (!mixList.empty()) {
-							auto& id = mixList.front();
-							mixList.pop();
+						// 将各通道分贝按照从大到小进行排序
+						std::sort(chnlList.begin(), chnlList.end(), [](const auto& a, const auto& b) {
+							return a.second > b.second;
+						});
+
+						// 获取各通道音频裸数据
+						mixId.clear();
+						for (size_t i = 0; i < chnlList.size(); ++i) {
+							auto& id = chnlList.at(i).first;
 							auto it = APCs.find(id);
 							if (it == APCs.end()) continue;
 							std::vector<int16_t> data;
-							//it->second->getBuffer(data, minLength);
+							// 所有通道的数据都需要消耗，避免堆积
 							it->second->getBuffer(data, lengthStandard);
 							if (data.empty()) continue;
-							srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
+							if (i < 3) {
+								// 选取前三个通道进行混音
+								srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
+								mixId = mixId + "/" + id;
+							}
 						}
 					}
 				}
