@@ -88,6 +88,7 @@ namespace AudioEngine23 {
       if (ret < 0)
       {
         E_LOG("avcodec_send_packet error");
+        return -1;
       }
       while (true) {
         uint8_t* pOutData = NULL;

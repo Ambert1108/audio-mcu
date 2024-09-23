@@ -62,7 +62,7 @@ namespace aom {
 		}
 		{
 			uniqueLock lck(apcLocker);
-			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(id, src, dst, ctx->interval));
+			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(ctx->jobId, id, src, dst, ctx->interval));
 
 			if (!newChnl.second) {
 				E_LOG("[mpu::addChannel->{}] add channel[{}] failed, id is exist", ctx->jobId, id);

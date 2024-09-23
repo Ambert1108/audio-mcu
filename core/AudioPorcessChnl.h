@@ -85,11 +85,12 @@ namespace aom {
 
 	class AudioPorcessChnl {
 	public:
-		AudioPorcessChnl(const std::string& id, Point listen, Point dst, double interval);
+		AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval);
 		~AudioPorcessChnl();
 		bool open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType);
 		void close();
-		size_t getLength();
+		double getVolume() const;
+		size_t getLength() const;
 		void getBuffer(std::vector<int16_t>& dst, size_t length);
 		void setMicType(int val);
 		TaskStatusType getStatus() const;
@@ -107,6 +108,7 @@ namespace aom {
 		mutable std::mutex srcBufLocker{};
 		std::atomic<bool> chnlReady{ false };
 
+		std::string jobId;
 		std::string chnlId;
 		Point listenPoint, dstPoint;
 		double timeInterval;

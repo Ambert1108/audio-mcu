@@ -17,8 +17,8 @@ namespace aom {
 		return 20 * std::log10(rms / 32767.0);  // 取 16 位 PCM 的最大值
 	}
 
-	AudioPorcessChnl::AudioPorcessChnl(const std::string& id, Point listen, Point dst, double interval)
-		: chnlId(id), listenPoint(listen), dstPoint(dst), timeInterval(interval), decoder(nullptr),
+	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval)
+		: jobId(jobid), chnlId(id), listenPoint(listen), dstPoint(dst), timeInterval(interval), decoder(nullptr),
 		notifier(nullptr), switcher(nullptr) {
 		srcBuffer.reserve(30000);
 	}
@@ -34,8 +34,8 @@ namespace aom {
 		//随机设置ssrc
 		ssrc = rand() % 9000000 + 1000000 + (int32_t)seeker::time::currentTime();
 		work1Th = std::thread{ &AudioPorcessChnl::workingLoop, this };
-		I_LOG("[apc::open->{}] channel open success. codecType:{}, inputRate:{}, "
-			"outputRate:{}, bitrate:{}, pt:{}", chnlId, codecType, inputRate, outputRate, bitrate, payloadType);
+		I_LOG("[apc::open->{}:{}] channel open success. codecType:{}, inputRate:{}, "
+			"outputRate:{}, bitrate:{}, pt:{}", jobId, chnlId, codecType, inputRate, outputRate, bitrate, payloadType);
 		return true;
 	}
 
@@ -44,9 +44,15 @@ namespace aom {
 		status << TaskStatusType::down;
 		if (work1Th.joinable()) work1Th.join();
 		status << TaskStatusType::end;
+		I_LOG("[apc::close->{}:{}] channel close success", jobId, chnlId);
 	}
 
-	size_t AudioPorcessChnl::getLength() {
+	double AudioPorcessChnl::getVolume() const {
+		lockGuard lck(srcBufLocker);
+		return calculateVolume(srcBuffer);
+	}
+
+	size_t AudioPorcessChnl::getLength() const {
 		lockGuard lck(srcBufLocker);
 		return srcBuffer.size();
 	}
@@ -54,7 +60,7 @@ namespace aom {
 	void AudioPorcessChnl::getBuffer(std::vector<int16_t>& dst, size_t length) {
 		lockGuard lck(srcBufLocker);
 		if (srcBuffer.size() < length) {
-			D_LOG("[apc::getBuffer->{}] get src buffer is empty, size {}", chnlId, srcBuffer.size());
+			D_LOG("[apc::getBuffer->{}:{}] get src buffer is empty, size {}", jobId, chnlId, srcBuffer.size());
 			return;
 		}
 		dst.assign(srcBuffer.begin(), srcBuffer.begin() + length);
@@ -80,8 +86,8 @@ namespace aom {
 			//设置视频RTP接收器，让接收器绑定收流地址并设置发流地址
 			switcher = std::make_unique<RtpTransceiver>(chnlId, 32);
 			if (switcher->open(listenPoint.ip, listenPoint.port) != 0) {
-				E_LOG("[apc::recvAndDec->{}] rtpTrs bind video recv ip={}, port={} failed.",
-					chnlId, listenPoint.ip, listenPoint.port);
+				E_LOG("[apc::recvAndDec->{}:{}] rtpTrs bind video recv ip={}, port={} failed.",
+					jobId, chnlId, listenPoint.ip, listenPoint.port);
 				status << TaskStatusType::exce;
 				return;
 			}
@@ -92,7 +98,7 @@ namespace aom {
 			switcher->setRtpNotifier(notifier);
 		}
 		catch (std::exception& ex) {
-			E_LOG("[apc::recvAndDec->{}] get exception: {}", chnlId, ex.what());
+			E_LOG("[apc::recvAndDec->{}:{}] get exception: {}", jobId, chnlId, ex.what());
 			status << TaskStatusType::exce;
 			return;
 		}
@@ -117,7 +123,7 @@ namespace aom {
 				float timeAvg = (float)timeTotal / timeCount;
 				float rtpAvg = (float)rtpTotal / timeCount;
 				float dbAvg = (float)dbTotal / timeCount;
-				I_LOG("APC::check->{} loop avg use {}ms, process {} rtp pkt, avg {}db", chnlId, timeAvg, rtpAvg, dbAvg);
+				I_LOG("APC::check->{}:{} loop avg use {}ms, process {} rtp pkt, avg {}db", jobId, chnlId, timeAvg, rtpAvg, dbAvg);
 				timeTotal = 0;
 				rtpTotal = 0;
 				dbTotal = 0.0;
@@ -125,7 +131,7 @@ namespace aom {
 			});
 			printTimer->Start();
 			chnlReady.store(true);
-			I_LOG("[apc::recvAndDec->{}] thread is open, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
+			I_LOG("[apc::recvAndDec->{}:{}] thread is open, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 			while (status) {
 				// 1.判断麦克风状态，闭麦状态下不收流
 				//if (micType.load() == 0) {
@@ -143,7 +149,7 @@ namespace aom {
 					switcher->receiveRtp(recvQueue);
 				}
 				int t = seeker::time::currentTime() - usePoint;
-				if (t > 40) W_LOG("chnlId:{} recv use {}ms", chnlId, t);
+				if (t > 40) W_LOG("[apc::recvAndDec->{}:{}] recv use {}ms", jobId, chnlId, t);
 				if (!status) break;
 				while (!recvQueue.empty()) {
 					rtpTotal++;
@@ -179,33 +185,38 @@ namespace aom {
 					memcpy(pkt->data, payloadBuf.data(), payloadBuf.size());
 					int ret = av_packet_from_data(pkt, pkt->data, pkt->size);
 					if (ret < 0) {
-						E_LOG("[apc::recvAndDec->{}] use av_packet_from_data failed", chnlId);
+						E_LOG("[apc::recvAndDec->{}:{}] use av_packet_from_data failed", jobId, chnlId);
 						av_free(pkt->data);
 						continue;
 					}
 				
 					// 6.解码音频帧
-					decoder->getFrame(pkt, frame);
+					if (decoder->getFrame(pkt, frame) != 0) {
+						av_frame_unref(frame);
+						av_packet_unref(pkt);
+						recvQueue.pop_front();
+						continue;
+					}
 					int size = frame->nb_samples * av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format))
 						* frame->channels;
 					int32_t inc = ts - lastTs;
 					D_LOG("seq:{}, ts:{}, increment:{}, audio frame size is {}", seq, ts, inc, size);
 					lastTs = ts;
 					int t = seeker::time::currentTime() - usePoint;
-					if (t > 5) W_LOG("chnlId:{} dec use {}ms", chnlId, t);
+					if (t > 5) W_LOG("[apc::recvAndDec->{}:{}] dec use {}ms", jobId, chnlId, t);
 					usePoint = seeker::time::currentTime();
 					// 7.将解码数据存入源缓存区中
 					{
 						lockGuard lck(srcBufLocker);
 						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
 						if (srcBuffer.size() > (int64_t)44100 / 47 * 2) {
-							W_LOG("chnId:{} buffer size is {}", chnlId, srcBuffer.size());
+							W_LOG("[apc::recvAndDec->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
 							srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
 						}
 						dbTotal += calculateVolume(srcBuffer);
 					}
 					t = seeker::time::currentTime() - usePoint;
-					if (t > 5) W_LOG("chnlId:{} insert use {}ms", chnlId, t);
+					if (t > 5) W_LOG("[apc::recvAndDec->{}:{}] insert use {}ms", jobId, chnlId, t);
 					av_frame_unref(frame);
 					av_packet_unref(pkt);
 					recvQueue.pop_front();
@@ -216,27 +227,27 @@ namespace aom {
 			}
 		}
 		catch (std::exception& ex) {
-			E_LOG("[apc::recvAndDec->{}] get exception: {}", chnlId, ex.what());
+			E_LOG("[apc::recvAndDec->{}:{}] get exception: {}", jobId, chnlId, ex.what());
 			status << TaskStatusType::exce;
 		}
 		if (printTimer) printTimer->Cancel();
-		I_LOG("[apc::recvAndDec->{}] thread is close, listen {}:{}", chnlId, listenPoint.ip, listenPoint.port);
+		I_LOG("[apc::recvAndDec->{}:{}] thread is close, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 	}
 
 	int AudioPorcessChnl::setDecoder(int sampleRate) {
 		try {
 			if (decoder) {
 				decoder->close();
-				W_LOG("[apc::setDecoder->{}] Decoder already exists, resetting...", chnlId);
+				W_LOG("[apc::setDecoder->{}:{}] Decoder already exists, resetting...", jobId, chnlId);
 			}
 			else {
 				decoder = std::make_unique<AudioEngine23::Decoder>();
 			}
 			decoder->open(44100, AV_SAMPLE_FMT_S16, 1);
-			I_LOG("[apc::setDecoder->{}] Decoder opened success", chnlId);
+			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}
 		catch (std::exception& ex) {
-			E_LOG("[apc::setDecoder->{}] get exception: {}", chnlId, ex.what());
+			E_LOG("[apc::setDecoder->{}:{}] get exception: {}", jobId, chnlId, ex.what());
 			return -1;
 		}
 		return 0;

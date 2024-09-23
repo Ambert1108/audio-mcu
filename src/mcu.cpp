@@ -123,6 +123,7 @@ namespace aom {
 			mpus.erase(jobId);
 		}
 
+		I_LOG("Debug: send end {} event to mpu", jobId);
 		//向对应的MPU发送关闭事件
 		mpu->reportMediaInfo(std::make_unique<EndEvent>());
 
