@@ -137,10 +137,10 @@ namespace aom {
 			I_LOG("[apc::recvAndDec->{}:{}] thread is open, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 			while (status) {
 				// 1.判断麦克风状态，闭麦状态下不收流
-				//if (micType.load() == 0) {
-				//	std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				//	continue;
-				//}
+				if (micType.load() == 0) {
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					continue;
+				}
 				timePoint = seeker::time::currentTime();
 				int64_t usePoint = seeker::time::currentTime();
 				// 2.接收音频流

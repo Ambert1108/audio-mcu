@@ -202,7 +202,7 @@ namespace aom {
 						dstForm.insert(std::pair<std::string, std::vector<int16_t>>(key, {}));
 
 						// 如果通道麦克风为闭麦状态，跳过
-						//if (!val->micOpen()) continue;
+						if (!val->micOpen()) continue;
 
 						size_t length = val->getLength();
 						// 所有小于标准长度的通道，本次不参与混音
