@@ -30,7 +30,7 @@ namespace aom {
 		//MPU转为exce态或未收到RTP包时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
 		stop();
 
-		I_LOG("[MPU::destory] jobId={} success", ctx->jobId);
+		I_LOG("[mpu::destory->{}] destory success", ctx->jobId);
 	}
 
 	void MediaProcessUnit::reportMediaInfo(std::unique_ptr<Event> info) {
@@ -161,7 +161,7 @@ namespace aom {
 			//每mpucheckInterval秒计算MPU相关参数
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				float timeAvg = (float)timeTotal / timeCount;
-				I_LOG("MPU::check->{} loop use avg {}ms, mix id:{}", ctx->jobId, timeAvg, mixId);
+				I_LOG("[MPU::check->{}] LoopUse[{}ms] MixList[{}]", ctx->jobId, timeAvg, mixId);
 				timeTotal = 0;
 				timeCount = 0;
 				mixId.clear();
@@ -252,7 +252,7 @@ namespace aom {
 							if (i < 3) {
 								// 选取前三个通道进行混音
 								srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
-								mixId = mixId + "/" + id;
+								mixId = mixId + "|" + id;
 							}
 						}
 					}

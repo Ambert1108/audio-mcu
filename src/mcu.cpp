@@ -14,7 +14,7 @@ namespace aom {
 		closeCondition.notify_all();
 		if (AutoCloseThr.joinable()) AutoCloseThr.join();
 		RtpTransceiver::shutdown();
-		W_LOG("[MCU::close] Media Control Unit close Success");
+		W_LOG("[mcu::close] Media Control Unit close Success");
 	}
 
 	int MediaControlUnit::init() {
@@ -31,13 +31,13 @@ namespace aom {
 			}
 			double keepTime1 = static_cast<double>(seeker::time::currentTime() - status.hostMemKeepTimePoint)
 				/ (1000.0 * 60 * 60);
-			I_LOG("[MCU::check] running:{} host mem/max:{}/{}KB, maxKeep={:.3f}h",
+			I_LOG("[MCU::check] running[{}] host mem/max[{}/{}KB] maxKeep[{:.3f}h]",
 				status.runningJob, hostMem, status.maxHostMem, keepTime1);
 		});
 		mcuCheck->Start();
 
 		audioPortTool = std::make_unique<PortTool>(portPoint, portRange, "audio");
-		W_LOG("[MCU::init] Media Control Unit Init Success, deviceId={}, mcu check={}s", deviceId, mcucheckInterval);
+		W_LOG("[mcu::init] Media Control Unit Init Success, deviceId={}, mcu check={}s", deviceId, mcucheckInterval);
 		return 0;
 	}
 
@@ -46,7 +46,7 @@ namespace aom {
 		int64_t timePoint = 0;
 		mpuCloseForm tmpCloseForm{};
 
-		I_LOG("[MCU::autoClose] autoclose is running, checkTime:{}ms", autocheckInterval);
+		I_LOG("[mcu::autoClose] autoclose is running, checkTime:{}ms", autocheckInterval);
 		while (keepWork.load()) {
 			uniqueLock lck(closeLocker);
 			closeCondition.wait_for(lck, std::chrono::milliseconds(autocheckInterval),
@@ -76,7 +76,7 @@ namespace aom {
 			}
 		}
 
-		I_LOG("[MCU::autoClose] autoclose is closed, handle count:{}", autoCloseNum.load());
+		I_LOG("[mcu::autoClose] autoclose is closed, handle count:{}", autoCloseNum.load());
 	}
 
 	HandleError MediaControlUnit::createMpu(const CreateJobContext& context) {
@@ -113,7 +113,7 @@ namespace aom {
 			writeLock lck(mpuFormLocker);
 			auto it = mpus.find(jobId);
 			if (it == mpus.end()) {
-				W_LOG("[MediaControlUnit::removeMpu][{}] is not found.", jobId);
+				W_LOG("[mcu::removeMpu][{}] is not found.", jobId);
 				return JobidNotFound;
 			}
 
@@ -123,7 +123,6 @@ namespace aom {
 			mpus.erase(jobId);
 		}
 
-		I_LOG("Debug: send end {} event to mpu", jobId);
 		//向对应的MPU发送关闭事件
 		mpu->reportMediaInfo(std::make_unique<EndEvent>());
 

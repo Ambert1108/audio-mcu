@@ -123,10 +123,11 @@ namespace aom {
 		try {
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				float timeAvg = (float)timeTotal / timeCount;
-				float rtpAvg = (float)rtpTotal / timeCount;
+				float rtpAvg = rtpTotal == 0 ? 0.0f : (float)rtpTotal / timeCount;
 				float dbAvg = dbTotal == 0 ? 0.0f : (float)dbTotal / timeCount;
 				db.store(dbAvg);
-				I_LOG("APC::check->{}:{} loop avg use {}ms, process {} rtp pkt, avg {}db", jobId, chnlId, timeAvg, rtpAvg, dbAvg);
+				I_LOG("[APC::check->{}:{}] LoopUse[{}ms] process[ {:.4f} rtp pkt] [avg {:.4f}db]", 
+					jobId, chnlId, timeAvg, rtpAvg, dbAvg);
 				timeTotal = 0;
 				rtpTotal = 0;
 				dbTotal = 0.0;

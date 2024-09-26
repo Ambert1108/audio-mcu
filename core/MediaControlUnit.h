@@ -46,6 +46,7 @@ namespace aom {
 						break;
 					}
 				}
+				E_LOG("PortTool::applyPort::Error: {} port {} is occur, apply failed", portTypeName, port);
 				failNum += 2;
 				if (failNum > portRange) {
 					E_LOG("PortTool::applyPort::Error: apply available {} port failed", portTypeName);
