@@ -143,6 +143,8 @@ namespace aom {
 				// 1.判断麦克风状态，闭麦状态下不收流
 				if (micType.load() == 0) {
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					lockGuard lck(srcBufLocker);
+					if (!srcBuffer.empty()) srcBuffer.clear();
 					continue;
 				}
 				timePoint = seeker::time::currentTime();
@@ -157,6 +159,7 @@ namespace aom {
 					switcher->receiveRtp(recvQueue);
 					if (noRtpCount > 100) {
 						W_LOG("[apc::workingLoop->{}:{}] no rtp data", jobId, chnlId);
+						noRtpCount = 0;
 					}
 					noRtpCount++;
 				}
