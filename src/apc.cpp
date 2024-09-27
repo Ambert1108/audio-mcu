@@ -91,7 +91,7 @@ namespace aom {
 			//设置视频RTP接收器，让接收器绑定收流地址并设置发流地址
 			switcher = std::make_unique<RtpTransceiver>(chnlId, 32);
 			if (switcher->open(listenPoint.ip, listenPoint.port) != 0) {
-				E_LOG("[apc::recvAndDec->{}:{}] rtpTrs bind video recv ip={}, port={} failed.",
+				E_LOG("[apc::workingLoop->{}:{}] rtpTrs bind video recv ip={}, port={} failed.",
 					jobId, chnlId, listenPoint.ip, listenPoint.port);
 				status << TaskStatusType::exce;
 				return;
@@ -103,7 +103,7 @@ namespace aom {
 			switcher->setRtpNotifier(notifier);
 		}
 		catch (std::exception& ex) {
-			E_LOG("[apc::recvAndDec->{}:{}] get exception: {}", jobId, chnlId, ex.what());
+			E_LOG("[apc::workingLoop->{}:{}] get exception: {}", jobId, chnlId, ex.what());
 			status << TaskStatusType::exce;
 			return;
 		}
@@ -138,7 +138,7 @@ namespace aom {
 			});
 			printTimer->Start();
 			chnlReady.store(true);
-			I_LOG("[apc::recvAndDec->{}:{}] thread is open, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
+			I_LOG("[apc::workingLoop->{}:{}] thread is open, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 			while (status) {
 				// 1.判断麦克风状态，闭麦状态下不收流
 				if (micType.load() == 0) {
@@ -151,12 +151,17 @@ namespace aom {
 				switcher->receiveRtp(recvQueue);
 
 				// 3.若未能收到音频流，等待1ms后重新收流
+				int noRtpCount = 0;
 				while (recvQueue.empty() && status) {
 					notifier->waitNotify(1);
 					switcher->receiveRtp(recvQueue);
+					if (noRtpCount > 100) {
+						W_LOG("[apc::workingLoop->{}:{}] no rtp data", jobId, chnlId);
+					}
+					noRtpCount++;
 				}
 				int t = seeker::time::currentTime() - usePoint;
-				if (t > 65) W_LOG("[apc::recvAndDec->{}:{}] recv use {}ms", jobId, chnlId, t);
+				if (t > 65) W_LOG("[apc::workingLoop->{}:{}] recv use {}ms", jobId, chnlId, t);
 				if (!status) break;
 				while (!recvQueue.empty()) {
 					rtpTotal++;
@@ -192,7 +197,7 @@ namespace aom {
 					memcpy(pkt->data, payloadBuf.data(), payloadBuf.size());
 					int ret = av_packet_from_data(pkt, pkt->data, pkt->size);
 					if (ret < 0) {
-						E_LOG("[apc::recvAndDec->{}:{}] use av_packet_from_data failed", jobId, chnlId);
+						E_LOG("[apc::workingLoop->{}:{}] use av_packet_from_data failed", jobId, chnlId);
 						av_free(pkt->data);
 						continue;
 					}
@@ -210,35 +215,37 @@ namespace aom {
 					D_LOG("seq:{}, ts:{}, increment:{}, audio frame size is {}", seq, ts, inc, size);
 					lastTs = ts;
 					int t = seeker::time::currentTime() - usePoint;
-					if (t > 5) W_LOG("[apc::recvAndDec->{}:{}] dec use {}ms", jobId, chnlId, t);
+					if (t > 5) W_LOG("[apc::workingLoop->{}:{}] dec use {}ms", jobId, chnlId, t);
 					usePoint = seeker::time::currentTime();
 					// 7.将解码数据存入源缓存区中
 					{
 						lockGuard lck(srcBufLocker);
-						if (srcBuffer.size() > (int64_t)44100 / 47 * 2) {
-							W_LOG("[apc::recvAndDec->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
+						if (srcBuffer.size() > (int64_t)44100 / 47 * 6) {
+							W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
 							srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
 						}
 						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
 						dbTotal += calculateVolume(srcBuffer);
 					}
 					t = seeker::time::currentTime() - usePoint;
-					if (t > 5) W_LOG("[apc::recvAndDec->{}:{}] insert use {}ms", jobId, chnlId, t);
+					if (t > 5) W_LOG("[apc::workingLoop->{}:{}] insert use {}ms", jobId, chnlId, t);
 					av_frame_unref(frame);
 					av_packet_unref(pkt);
 					recvQueue.pop_front();
 				}
+				//int32_t use = seeker::time::currentTime() - timePoint;
+				//if (use < 21) std::this_thread::sleep_for(std::chrono::milliseconds(21 - use));
 				int64_t loopTime = seeker::time::currentTime() - timePoint;
 				timeTotal += loopTime;
 				timeCount++;
 			}
 		}
 		catch (std::exception& ex) {
-			E_LOG("[apc::recvAndDec->{}:{}] get exception: {}", jobId, chnlId, ex.what());
+			E_LOG("[apc::workingLoop->{}:{}] get exception: {}", jobId, chnlId, ex.what());
 			status << TaskStatusType::exce;
 		}
 		if (printTimer) printTimer->Cancel();
-		I_LOG("[apc::recvAndDec->{}:{}] thread is close, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
+		I_LOG("[apc::workingLoop->{}:{}] thread is close, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 	}
 
 	int AudioPorcessChnl::setDecoder(int sampleRate) {
