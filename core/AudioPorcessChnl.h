@@ -82,10 +82,11 @@ namespace aom {
 	typedef std::unique_ptr<RtpTransceiver> RtpTrxer;
 	typedef std::shared_ptr<Notifier> RtpNotifier;
 	typedef std::queue<std::vector<uint8_t>> NaluBuffer;
+	typedef std::function<void(port_t)> FreePortCallback;
 
 	class AudioPorcessChnl {
 	public:
-		AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval);
+		AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval, FreePortCallback callback);
 		~AudioPorcessChnl();
 		bool open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType);
 		void close();
@@ -94,6 +95,7 @@ namespace aom {
 		void getBuffer(std::vector<int16_t>& dst, size_t length);
 		void setMicType(int val);
 		TaskStatusType getStatus() const;
+		int16_t getPort() const;
 		void sendRtp(std::vector<uint8_t> payload, uint32_t ts);
 		bool ready() const;
 		bool micOpen() const;
@@ -107,6 +109,7 @@ namespace aom {
 		std::vector<int16_t> srcBuffer{}; //源缓存区
 		mutable std::mutex srcBufLocker{};
 		std::atomic<bool> chnlReady{ false };
+		FreePortCallback freePortCallback = nullptr;
 
 		std::string jobId;
 		std::string chnlId;

@@ -76,7 +76,7 @@ namespace aom {
 
 	class MediaProcessUnit {
 	public:
-		MediaProcessUnit(MpuCtxPtr&& ctxPtr, RemoveCallback callback);
+		MediaProcessUnit(MpuCtxPtr&& ctxPtr, RemoveCallback callback1, FreePortCallback callback2);
 		~MediaProcessUnit();
 
 		void reportMediaInfo(std::unique_ptr<Event> info);
@@ -96,6 +96,7 @@ namespace aom {
 		std::condition_variable eventCondition{};
 		const std::chrono::milliseconds wakeUpInterval = 1ms;
 		RemoveCallback autoCloseCallback = nullptr;
+		FreePortCallback freePortCallback = nullptr;
 
 		int64_t startTime = 0;
 		int64_t noChnlTime = seeker::IniConfig::GetInteger("main", "auto_stop", 15);

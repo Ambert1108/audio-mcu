@@ -33,9 +33,8 @@ namespace aom {
 		port_t applyPort() {
 			port_t port = 0;
 			int failNum = 0;
-
 			while (true) {
-				if (portIndex.load() > portRange) {
+				if (portIndex.load() >= portRange) {
 					portIndex.store(0);
 				}
 				port = portIndex.fetch_add(2) + portPoint;
@@ -95,8 +94,9 @@ namespace aom {
 		port_t port;
 	};
 
-	typedef RemoveCallback RemoveFunc;
-	typedef std::string JobId;
+	using RemoveFunc = RemoveCallback;
+	using FreePort = FreePortCallback;
+	using JobId = std::string;
 	using mpuCloseForm = std::unordered_set<UniqueMPU>;
 	using mpuForm = std::unordered_map<JobId, UniqueMPU>;
 	using mpuIdList = std::vector<std::string>;
@@ -104,12 +104,13 @@ namespace aom {
 	class MediaControlUnit {
 		MediaControlUnit();
 		void autoClose();
+		void freePort(port_t);
 
 		const int64_t mcucheckInterval = seeker::IniConfig::GetInteger("log", "mcu_check_interval", 1);
 		const int autocheckInterval = seeker::IniConfig::GetInteger("log", "auto_check_interval", 300);
 
 		const port_t portPoint = seeker::IniConfig::GetInteger("main", "port_point", 62300);
-		const int portRange = seeker::IniConfig::GetInteger("main", "ort_range", 200);
+		const int portRange = seeker::IniConfig::GetInteger("main", "port_range", 200);
 
 		const std::string mediaIp = seeker::IniConfig::Get("media", "ip", "0.0.0.0");
 		const int codecType = seeker::IniConfig::GetInteger("media", "codec_type", 1);
@@ -130,7 +131,8 @@ namespace aom {
 		mutable std::shared_mutex closeMpuFormLocker = {};
 		mutable std::mutex closeLocker = {};
 		std::condition_variable closeCondition = {};
-		RemoveFunc func = nullptr;
+		RemoveFunc endJobFunc = nullptr;
+		FreePort freePortFunc = nullptr;
 
 		std::atomic<bool> keepWork{ true };
 		std::atomic<uint64_t> autoCloseNum{ 0 };

@@ -20,7 +20,8 @@ namespace aom {
 	int MediaControlUnit::init() {
 		std::string deviceId = seeker::IniConfig::Get("main", "device_id", "0");
 		AutoCloseThr = std::thread{ &MediaControlUnit::autoClose, this };
-		func = std::bind(&MediaControlUnit::endMpu, this, std::placeholders::_1);
+		endJobFunc = std::bind(&MediaControlUnit::endMpu, this, std::placeholders::_1);
+		freePortFunc = std::bind(&MediaControlUnit::freePort, this, std::placeholders::_1);
 
 		status.hostMemKeepTimePoint = seeker::time::currentTime();
 		mcuCheck = InvokeTimer::CreateTimer(std::chrono::seconds(mcucheckInterval), true, [&]() {
@@ -79,6 +80,10 @@ namespace aom {
 		I_LOG("[mcu::autoClose] autoclose is closed, handle count:{}", autoCloseNum.load());
 	}
 
+	void MediaControlUnit::freePort(port_t val) {
+		if(audioPortTool) audioPortTool->freePort(val);
+	}
+
 	HandleError MediaControlUnit::createMpu(const CreateJobContext& context) {
 		mpuForm::iterator it;
 		{
@@ -98,7 +103,7 @@ namespace aom {
 			writeLock lck(mpuFormLocker);
 			auto newMpu = mpus.try_emplace(context.jobId, 
 				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, context.codecType,
-				context.sampleRate, context.bitrate, context.timeInterval, pt), func));
+				context.sampleRate, context.bitrate, context.timeInterval, pt), endJobFunc, freePortFunc));
 			if (!newMpu.second) return JoinJobError;
 		}
 		status.runningJob.fetch_add(1);
@@ -171,11 +176,9 @@ namespace aom {
 		{
 			readLock lck(mpuFormLocker);
 			it = mpus.find(context.jobId);
-
+			//mpu不存在，业务处理失败
+			if (it == mpus.end()) return JobidNotFound;
 		}
-
-		//mpu不存在，业务处理失败
-		if (it == mpus.end()) return JobidNotFound;
 
 		//更新mpu
 		it->second->reportMediaInfo(std::make_unique<RemoveChnlEvent>(context));

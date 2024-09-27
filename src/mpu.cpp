@@ -10,8 +10,8 @@ namespace aom {
 		return s;
 	}
 
-	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback)
-		: ctx(std::move(ptr)), autoCloseCallback(callback), APCs(10), mixer(nullptr), encoder(nullptr) {
+	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback1, FreePortCallback callback2)
+		: ctx(std::move(ptr)), autoCloseCallback(callback1), freePortCallback(callback2), APCs(10), mixer(nullptr), encoder(nullptr) {
 		startTime = seeker::time::currentTime();
 		mixer = std::make_unique<AudioMixer>();
 		status << TaskStatusType::run;
@@ -62,7 +62,7 @@ namespace aom {
 		}
 		{
 			uniqueLock lck(apcLocker);
-			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(ctx->jobId, id, src, dst, ctx->interval));
+			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(ctx->jobId, id, src, dst, ctx->interval, freePortCallback));
 
 			if (!newChnl.second) {
 				E_LOG("[mpu::addChannel->{}] add channel[{}] failed, id is exist", ctx->jobId, id);
@@ -77,9 +77,11 @@ namespace aom {
 		}
 		uniqueLock lck(mixerLocker);
 		mixer->addStreamId(id);
+		data.portList.push_back(src.port);
 	}
 
 	void MediaProcessUnit::removeChannel(const std::string& id) {
+		port_t port = 0;
 		{
 			uniqueLock lck(apcLocker);
 			auto it = APCs.find(id);
@@ -87,10 +89,12 @@ namespace aom {
 				E_LOG("[mpu::removeChannel->{}] remove channel[{}] failed, id not found", ctx->jobId, id);
 				return;
 			}
+			port = it->second->getPort();
 			APCs.erase(it);
 		}
 		uniqueLock lck(mixerLocker);
 		mixer->removeId(id);
+		data.portList.erase(std::remove(data.portList.begin(), data.portList.end(), port), data.portList.end());
 	}
 
 	void MediaProcessUnit::openChnlMic(const std::string& id) {

@@ -19,9 +19,9 @@ namespace aom {
 		return 20.0 * std::log10(rms);
 	}
 
-	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval)
-		: jobId(jobid), chnlId(id), listenPoint(listen), dstPoint(dst), timeInterval(interval), decoder(nullptr),
-		notifier(nullptr), switcher(nullptr) {
+	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, 
+		double interval, FreePortCallback callback) : jobId(jobid), chnlId(id), listenPoint(listen), dstPoint(dst), 
+		timeInterval(interval), decoder(nullptr), notifier(nullptr), switcher(nullptr), freePortCallback(callback) {
 		srcBuffer.reserve(30000);
 	}
 
@@ -46,6 +46,7 @@ namespace aom {
 		status << TaskStatusType::down;
 		if (work1Th.joinable()) work1Th.join();
 		status << TaskStatusType::end;
+		freePortCallback(listenPoint.port);
 		I_LOG("[apc::close->{}:{}] channel close success", jobId, chnlId);
 	}
 
@@ -72,6 +73,8 @@ namespace aom {
 	void AudioPorcessChnl::setMicType(int val) { micType.store(val); }
 
 	TaskStatusType AudioPorcessChnl::getStatus() const { return status.getStatus(); }
+
+	int16_t AudioPorcessChnl::getPort() const { return listenPoint.port; }
 
 	void AudioPorcessChnl::sendRtp(std::vector<uint8_t> payload, uint32_t ts) {
 		seeker::rtp::Rtp rtpPacket = seeker::rtp::Rtp(payloadType, 1, seqNum++, ts, ssrc, payload);
