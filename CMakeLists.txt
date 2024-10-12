@@ -91,4 +91,8 @@ else()
 	include(${PROJECT_SOURCE_DIR}/inc/remix/remixlink.cmake)
 endif()
 
+find_library(FFT_LIBRARY fftw3)
+list(APPEND PROJECT_LIBS ${FFT_LIBRARY})
+message(STATUS "fft lib:${FFT_LIBRARY}")
+
 add_subdirectory(src)

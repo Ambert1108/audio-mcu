@@ -122,6 +122,8 @@ namespace aom {
 		uint32_t ssrc = 0;
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 
+		FILE* decFile = nullptr;
+		FILE* encFile = nullptr;
 		std::thread work1Th{};
 
 		void workingLoop();
