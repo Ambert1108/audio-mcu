@@ -202,7 +202,10 @@ namespace aom {
 		srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + length);
 	}
 
-	void AudioPorcessChnl::setMicType(int val) { micType.store(val); }
+	void AudioPorcessChnl::setMicType(int val) { 
+		micType.store(val); 
+		micOpenNeedClear = true;
+	}
 
 	TaskStatusType AudioPorcessChnl::getStatus() const { return status.getStatus(); }
 
@@ -314,6 +317,7 @@ namespace aom {
 						throw std::runtime_error("error: rtpData.length() == 0");
 					}
 
+					payloadType = rtpData.payloadType();
 					// 4.判断音频RTP包seq是否连续，若不连续说明丢包，需要补0
 					uint16_t seq = (int)rtpData.seq();
 					//if (lastSeq == 0) lastSeq = seq;
@@ -363,11 +367,18 @@ namespace aom {
 					{
 						lockGuard lck(srcBufLocker);
 						pcmTotal += srcBuffer.size();
-						if (srcBuffer.size() > (int64_t)44100 / 47 * 6) {
+						if (srcBuffer.size() > (int64_t)8000 / 50 * 6) {
 							W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
-							srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
+							if (micOpenNeedClear) {
+								srcBuffer.clear();
+								micOpenNeedClear = false;
+							}
+							else {
+								srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
+							}
 						}
 						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
+						D_LOG("recv pcm size = {}", size / 2);
 						//ns(srcBuffer);
 						//dbTotal += calculateVolume(srcBuffer);
 						dbTotal += getDB(srcBuffer);
@@ -403,7 +414,7 @@ namespace aom {
 			else {
 				decoder = std::make_unique<AudioEngine23::Decoder>();
 			}
-			decoder->open(44100, AV_SAMPLE_FMT_S16, 1);
+			decoder->open(8000, AV_SAMPLE_FMT_S16, 1);
 			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}
 		catch (std::exception& ex) {

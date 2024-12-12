@@ -187,7 +187,7 @@ namespace aom {
 				std::unordered_map<std::string, std::vector<int16_t>> srcForm{}; //需要混音的列表
 				std::unordered_map<std::string, std::vector<int16_t>> dstForm{}; //需要编码发送的列表
 				bool needMix = true;
-				size_t lengthStandard = 44100 / 47; //参考标准长度
+				size_t lengthStandard = 8000 / 50; //参考标准长度
 				{
 					uniqueLock lck(apcLocker);
 					// 判断各通道数据大小是否符合标准，不符则跳过该通道混音
@@ -229,7 +229,7 @@ namespace aom {
 						}
 						else {
 							int32_t use = seeker::time::currentTime() - timePoint;
-							if (use < 21) std::this_thread::sleep_for(std::chrono::milliseconds(21 - use));
+							if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(20 - use));
 							timeTotal += seeker::time::currentTime() - timePoint;
 							timeCount++;
 							continue;
@@ -286,9 +286,9 @@ namespace aom {
 				}
 				else {
 					// 如果不需要混音，则所有通道都发送静音帧
-					for (const auto& [key, val] : dstForm) {
-						dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
-					}
+					//for (const auto& [key, val] : dstForm) {
+					//	dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
+					//}
 					W_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
 				}
 				uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
@@ -298,7 +298,10 @@ namespace aom {
 					for (const auto& [key, val] : dstForm) {
 						auto it = APCs.find(key);
 						if (it == APCs.end()) continue;
-						if (val.empty()) W_LOG("[mpu::workingLoop->{}:{}] data is empty", ctx->jobId, key);
+						if (val.empty()) {
+							W_LOG("[mpu::workingLoop->{}:{}] data is empty", ctx->jobId, key);
+							continue;
+						}
 						frame->data[0] = (uint8_t*)val.data();
 						frame->nb_samples = val.size();
 						frame->format = AV_SAMPLE_FMT_S16;
@@ -311,7 +314,7 @@ namespace aom {
 					}
 				}
 				int32_t use = seeker::time::currentTime() - timePoint;
-				if (use < 21) std::this_thread::sleep_for(std::chrono::milliseconds(21 - use));
+				if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				timeTotal += seeker::time::currentTime() - timePoint;
 				timeCount++;
 			}
@@ -398,7 +401,7 @@ namespace aom {
 			}
 			else encoder = std::make_unique<AudioEngine23::Encoder>();
 
-			encoder->open(44100, AV_SAMPLE_FMT_S16, 1);
+			encoder->open(8000, AV_SAMPLE_FMT_S16, 1);
 			I_LOG("[mpu::setEncoder->{}] Encoder opened success.", ctx->jobId);
 		}
 		catch (std::exception& ex) {

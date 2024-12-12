@@ -125,6 +125,7 @@ namespace aom {
 		FILE* decFile = nullptr;
 		FILE* encFile = nullptr;
 		std::thread work1Th{};
+		bool micOpenNeedClear = false;
 
 		void workingLoop();
 		int setDecoder(int sampleRate);

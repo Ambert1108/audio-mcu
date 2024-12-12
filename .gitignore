@@ -93,7 +93,7 @@ ipch/
 # Grade
 out/
 build/
-mods/
+mod/
 res/animations/
 res/fonts/
 res/images/
