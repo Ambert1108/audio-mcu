@@ -51,7 +51,7 @@ namespace aom {
 
 	int MediaProcessUnit::getChnlNum() const { return APCs.size(); }
 
-	void MediaProcessUnit::addChannel(const std::string& id, const Point& src, const Point& dst, int sampleRate) {
+	void MediaProcessUnit::addChannel(const std::string& id, const Point& src, const Point& dst, int pt, int sampleRate) {
 		if (ctx->inSampleRate == 0) ctx->inSampleRate = sampleRate;
 		else {
 			if (ctx->inSampleRate != sampleRate) {
@@ -68,8 +68,9 @@ namespace aom {
 				E_LOG("[mpu::addChannel->{}] add channel[{}] failed, id is exist", ctx->jobId, id);
 				return;
 			}
+
 			if (!newChnl.first->second->open(ctx->codecType, sampleRate, ctx->outSampleRate, 
-				ctx->bitrate, ctx->payloadType)) {
+				ctx->bitrate, pt)) {
 				E_LOG("[mpu::addChannel->{}] open channel[{}] failed", ctx->jobId, id);
 				APCs.erase(id);
 				return;
@@ -160,6 +161,7 @@ namespace aom {
 		int64_t timeTotal = 0;
 		int32_t timeCount = 0;
 		int noNeedCount = 0;
+		uint32_t ts = 0;
 		std::string mixId{};
 		try {
 			//每mpucheckInterval秒计算MPU相关参数
@@ -229,6 +231,7 @@ namespace aom {
 						}
 						else {
 							int32_t use = seeker::time::currentTime() - timePoint;
+							//std::this_thread::sleep_for(std::chrono::milliseconds(1));
 							if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(20 - use));
 							timeTotal += seeker::time::currentTime() - timePoint;
 							timeCount++;
@@ -253,7 +256,7 @@ namespace aom {
 							// 所有通道的数据都需要消耗，避免堆积
 							it->second->getBuffer(data, lengthStandard);
 							if (data.empty()) continue;
-							if (i < 3) {
+							if (i < 5) {
 								// 选取前三个通道进行混音
 								srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
 								mixId = mixId + "|" + id;
@@ -286,12 +289,13 @@ namespace aom {
 				}
 				else {
 					// 如果不需要混音，则所有通道都发送静音帧
-					//for (const auto& [key, val] : dstForm) {
-					//	dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
-					//}
+					for (const auto& [key, val] : dstForm) {
+						dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
+					}
 					W_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
 				}
-				uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
+				//uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
+				ts += 160;
 				//将可能的结果编码并下发给各通道发送
 				{
 					uniqueLock lck(apcLocker);
@@ -314,7 +318,8 @@ namespace aom {
 					}
 				}
 				int32_t use = seeker::time::currentTime() - timePoint;
-				if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				//std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(20 - use));
 				timeTotal += seeker::time::currentTime() - timePoint;
 				timeCount++;
 			}

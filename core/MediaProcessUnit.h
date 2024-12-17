@@ -84,7 +84,7 @@ namespace aom {
 		TaskStatusType getStatus() const;
 		const MediaProcessData& getData() const;
 		int getChnlNum() const;
-		void addChannel(const std::string& id, const Point& src, const Point& dst, int sampleRate);
+		void addChannel(const std::string& id, const Point& src, const Point& dst, int pt, int sampleRate);
 		void removeChannel(const std::string& id);
 		void openChnlMic(const std::string&);
 		void closeChnlMic(const std::string&);
@@ -143,7 +143,7 @@ namespace aom {
 			MediaProcessUnit* master = nullptr;
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
 			master->addChannel(context.chnlId, Point{ context.listenIp, context.listenPort
-				}, Point{ context.dstIp, context.dstPort }, context.sampleRate);
+				}, Point{ context.dstIp, context.dstPort }, context.payloadType, context.sampleRate);
 		};
 
 		AddChnlContext context;

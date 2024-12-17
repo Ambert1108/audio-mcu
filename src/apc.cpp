@@ -153,8 +153,8 @@ namespace aom {
 		srcBuffer.reserve(30000);
 		std::string name1 = id + "_dec.pcm";
 		std::string name2 = id + "_enc.g711";
-		//decFile = fopen(name1.c_str(), "wb");
-		//encFile = fopen(name2.c_str(), "wb");
+		if (saveInput == 1) decFile = fopen(name1.c_str(), "wb");
+		if (saveOutput == 1) encFile = fopen(name2.c_str(), "wb");
 	}
 
 	AudioPorcessChnl::~AudioPorcessChnl() {
@@ -212,7 +212,7 @@ namespace aom {
 	int16_t AudioPorcessChnl::getPort() const { return listenPoint.port; }
 
 	void AudioPorcessChnl::sendRtp(std::vector<uint8_t> payload, uint32_t ts) {
-		//fwrite(payload.data(), 1, payload.size(), encFile);
+		if (saveOutput == 1) fwrite(payload.data(), 1, payload.size(), encFile);
 		seeker::rtp::Rtp rtpPacket = seeker::rtp::Rtp(payloadType, 1, seqNum++, ts, ssrc, payload);
 		std::deque<Rtp> sendQueue{ std::move(rtpPacket) };
 		switcher->sendRtp(sendQueue);
@@ -317,7 +317,7 @@ namespace aom {
 						throw std::runtime_error("error: rtpData.length() == 0");
 					}
 
-					payloadType = rtpData.payloadType();
+					//payloadType = rtpData.payloadType();
 					// 4.判断音频RTP包seq是否连续，若不连续说明丢包，需要补0
 					uint16_t seq = (int)rtpData.seq();
 					//if (lastSeq == 0) lastSeq = seq;
@@ -356,7 +356,7 @@ namespace aom {
 					}
 					int size = frame->nb_samples * av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format))
 						* frame->channels;
-					//fwrite(frame->data[0], 1, size, decFile);
+					if(saveInput == 1) fwrite(frame->data[0], 1, size, decFile);
 					int32_t inc = ts - lastTs;
 					D_LOG("seq:{}, ts:{}, increment:{}, audio frame size is {}", seq, ts, inc, size);
 					lastTs = ts;
@@ -414,7 +414,7 @@ namespace aom {
 			else {
 				decoder = std::make_unique<AudioEngine23::Decoder>();
 			}
-			decoder->open(8000, AV_SAMPLE_FMT_S16, 1);
+			decoder->open(sampleRate, AV_SAMPLE_FMT_S16, 1);
 			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}
 		catch (std::exception& ex) {

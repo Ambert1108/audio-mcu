@@ -97,6 +97,7 @@ namespace aom {
   struct AddChnlContext {
     std::string jobId = "unknown";
     std::string chnlId = "unknown";
+    int payloadType;
     int sampleRate;
     std::string dstIp;
     port_t dstPort;
@@ -104,6 +105,7 @@ namespace aom {
     mutable port_t listenPort = 0;
     friend void from_json(const nlohmann::json& j, AddChnlContext& context) {
       j.at("jobId").get_to(context.jobId);
+      j.at("payloadType").get_to(context.payloadType);
       j.at("sampleRate").get_to(context.sampleRate);
       j.at("dstIp").get_to(context.dstIp);
       j.at("dstPort").get_to(context.dstPort);
