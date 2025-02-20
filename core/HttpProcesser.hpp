@@ -83,14 +83,10 @@ namespace aom {
     std::string jobId = "unknown";
     mutable int codecType = -1;
     mutable int sampleRate = -1;
-    mutable int bitrate = -1;
-    int timeInterval = -1;
 
     friend void from_json(const nlohmann::json& j, CreateJobContext& context) {
-      if(j.contains("codecType"))j.at("codecType").get_to(context.codecType);
-      if(j.contains("sampleRate"))j.at("sampleRate").get_to(context.sampleRate);
-      if(j.contains("bitrate"))j.at("bitrate").get_to(context.bitrate);
-      if(j.contains("timeInterval"))j.at("timeInterval").get_to(context.timeInterval);
+      j.at("codecType").get_to(context.codecType);
+      j.at("sampleRate").get_to(context.sampleRate);
     }
   };
 

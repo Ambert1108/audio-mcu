@@ -47,25 +47,9 @@ namespace aom {
 	struct MpuContext {
 		std::string jobId;
 		int codecType;
-		int inSampleRate;
 		int outSampleRate;
-		int bitrate;
-		double interval; //ms
-		int payloadType;
-		MpuContext(std::string id, int type, int samplerate, int rate, int ti, int pt) 
-			: jobId(id), codecType(type), inSampleRate(0), outSampleRate(samplerate), 
-			bitrate(rate), payloadType(pt) {
-			if (ti > 0) interval = ti;
-			else {
-				try {
-					interval = 1.0 / outSampleRate * 1000;
-				}
-				catch (std::exception& ex) {
-					E_LOG("count time interval failed, out sample rate is {}", outSampleRate);
-					interval = 1.0;
-				}
-			}
-		}
+		MpuContext(std::string id, int type, int outrate) 
+			: jobId(id), codecType(type), outSampleRate(outrate) {};
 	};
 	typedef std::unique_ptr<MpuContext> MpuCtxPtr;
 
@@ -117,7 +101,7 @@ namespace aom {
 		MpuCtxPtr ctx;
 		MediaProcessData data;
 		UniqueMix mixer;
-		Encoder encoder;
+		SwrContext* swrContext;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 		const int noRtpTime = seeker::IniConfig::GetInteger("auto", "no_rtp_time", 30);
@@ -126,7 +110,6 @@ namespace aom {
 		void output();
 		void workingLoop();
 		void eventHandle();
-		int setEncoder(int sampleRate);
 		friend class AddChnlEvent;
 	};
 

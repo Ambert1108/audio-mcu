@@ -86,9 +86,9 @@ namespace aom {
 
 	class AudioPorcessChnl {
 	public:
-		AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst, double interval, FreePortCallback callback);
+		AudioPorcessChnl(const std::string& jobid, const std::string& chnlid, Point listen, Point dst, FreePortCallback callback);
 		~AudioPorcessChnl();
-		bool open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType);
+		bool open(int codecType, int inputRate, int outputRate, int payloadType);
 		void close();
 		float getVolume() const;
 		size_t getLength() const;
@@ -96,13 +96,17 @@ namespace aom {
 		void setMicType(int val);
 		TaskStatusType getStatus() const;
 		int16_t getPort() const;
-		void sendRtp(std::vector<uint8_t> payload, uint32_t ts);
+		void sendRtp(uint8_t* pcmData, int nb_samples, uint32_t ts);
 		bool ready() const;
 		bool micOpen() const;
 	private:
 		Decoder decoder;
+		Encoder encoder;
 		RtpTrxer switcher;
 		RtpNotifier notifier;
+		AVFrame* frame;
+		AVPacket* pkt;
+		SwrContext* swrContext;
 
 		TaskStatus status;
 		ChnlData data;
@@ -114,11 +118,13 @@ namespace aom {
 		std::string jobId;
 		std::string chnlId;
 		Point listenPoint, dstPoint;
-		double timeInterval;
 		std::atomic<float> db = 0.0f;
 		std::atomic<int> micType = 0; //0:off, !0:on
+		int codecType = 1;
+		int sampleRate = 1;
 		int payloadType = 97;
 		uint16_t seqNum = 0;
+		uint32_t ts = 0;
 		uint32_t ssrc = 0;
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 		const int saveInput = seeker::IniConfig::GetInteger("test", "save_input", 0);
@@ -130,7 +136,8 @@ namespace aom {
 		bool micOpenNeedClear = false;
 
 		void workingLoop();
-		int setDecoder(int sampleRate);
+		int setDecoder(int codecType, int sampleRate);
+		int setEncoder(int codecType, int sampleRate);
 	};
 
 	using UniqueAPC = std::unique_ptr<AudioPorcessChnl>;

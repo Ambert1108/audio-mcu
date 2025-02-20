@@ -94,16 +94,21 @@ namespace aom {
 		if (it != mpus.end()) return JobidExist;
 
 		//mpu不存在，创建任务
-		if (context.codecType == -1) context.codecType = codecType;
-		if (context.bitrate == -1) context.bitrate = bitrate;
-		if (context.sampleRate == -1) context.sampleRate = samplerate;
+		if (context.codecType != 1 && context.codecType != 2) {
+			E_LOG("[mcu::createMpu][{}] request param: codecType is invalid val {}", context.jobId, context.codecType);
+			return ParamError;
+		}
+		if (context.sampleRate == -1) {
+			E_LOG("[mcu::createMpu][{}] request param: sampleRate is -1", context.jobId);
+			return ParamError;
+		}
 
 		//尝试构造并加入MPU表单，若加入失败代表对应jobId已存在
 		{
 			writeLock lck(mpuFormLocker);
 			auto newMpu = mpus.try_emplace(context.jobId, 
 				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, context.codecType,
-				context.sampleRate, context.bitrate, context.timeInterval, pt), endJobFunc, freePortFunc));
+				context.sampleRate), endJobFunc, freePortFunc));
 			if (!newMpu.second) return JoinJobError;
 		}
 		status.runningJob.fetch_add(1);

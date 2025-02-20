@@ -4,9 +4,11 @@
 #include "AdtsHeader.h"
 #include <deque>
 
-
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavutil/opt.h>
+#include <libswresample/swresample.h>
+#include <libavformat/avformat.h>
 };
 
 namespace AudioEngine23 {
@@ -48,24 +50,27 @@ namespace AudioEngine23 {
       return true;
     }
   public:
-    // ��ʼ��������
-    int open(int sample_rate, AVSampleFormat sample_fmt, int channels) {
+    // 初始化解码器
+    int open(int codecType,int sample_rate, AVSampleFormat sample_fmt, int channels) {
       I_LOG("# audio decoder open ar:{}, sf:{}, ch:{}", sample_rate, sample_fmt, channels);
-      codec = avcodec_find_decoder(AV_CODEC_ID_PCM_ALAW); //Ѱ�ҽ�����
+      if(codecType==2)
+          codec = avcodec_find_decoder(AV_CODEC_ID_OPUS); //寻找解码器
+      else
+          codec = avcodec_find_decoder(AV_CODEC_ID_PCM_ALAW); //寻找解码器
       if (!codec) {
         fprintf(stderr, "Codec not found\n");
         return -1;
       }
-      c = avcodec_alloc_context3(codec); //��������ʼ��
+      c = avcodec_alloc_context3(codec); //解码器初始化
       if (!c) {
         fprintf(stderr, "Could not allocate audio codec context\n");
         return -2;
       }
-      c->sample_fmt = sample_fmt;    //���ò�����ʽ
-      c->sample_rate = sample_rate;  //���ò�����
-      c->channels = channels;        //����ͨ����
+      c->sample_fmt = sample_fmt;    //设置采样格式
+      c->sample_rate = sample_rate;  //设置采样率
+      c->channels = channels;        //设置通道数
       /* open it */
-      if (avcodec_open2(c, codec, NULL) < 0) {    //�򿪽�����+
+      if (avcodec_open2(c, codec, NULL) < 0) {    //打开解码器+
         fprintf(stderr, "Could not open codec\n");
         return -3;
       }
@@ -73,7 +78,7 @@ namespace AudioEngine23 {
       return 0;
     }
 
-    //����
+    //解码
     int getFrame(AVPacket* input, AVFrame* output) {
       int ret = 0;
       ret = av_packet_from_data(input, input->data, input->size);
@@ -87,8 +92,8 @@ namespace AudioEngine23 {
       av_packet_unref(input);
       if (ret < 0)
       {
-        E_LOG("avcodec_send_packet error");
-        return -1;
+          E_LOG("avcodec_send_packet error");
+          return -1;
       }
       while (true) {
         uint8_t* pOutData = NULL;
@@ -98,6 +103,7 @@ namespace AudioEngine23 {
           ret = avcodec_fill_audio_frame(output, c->channels, c->sample_fmt, pOutData, OutSize, 1);
           if (ret < 0) {
             E_LOG("ERROR: fill audio frame failed!");
+            return -1;
           }
           break;
         }
@@ -105,7 +111,7 @@ namespace AudioEngine23 {
       return 0;
     }
 
-    // �ر�
+    // 关闭
     void close() {
       I_LOG("decoder closed");
       avcodec_free_context(&c);
@@ -120,56 +126,58 @@ namespace AudioEngine23 {
     int samplerate = 44100;
     int sampleformat = AV_SAMPLE_FMT_S16; //s16le
   public:
-    // ��ʼ��������
-    int open(int sample_rate, AVSampleFormat sample_fmt, int channels) {
-      codec = avcodec_find_encoder(AV_CODEC_ID_PCM_ALAW);
-      if (!codec) {
-        E_LOG("ERROR: Codec not found!");
-        return -1;
-      }
+    // 初始化编码器
+    int open(int codecType,int sample_rate, AVSampleFormat sample_fmt, int channels) {
+        if (codecType == 2)
+            codec = avcodec_find_encoder(AV_CODEC_ID_OPUS); //寻找解码器
+        else
+            codec = avcodec_find_encoder(AV_CODEC_ID_PCM_ALAW); //寻找解码器
+        if (!codec) {
+            E_LOG("ERROR: Codec not found!");
+            return -1;
+        }
 
-      c = avcodec_alloc_context3(codec);
-      if (!c) {
-        E_LOG("ERROR: Could not allocate audio codec context");
-        return -2;
-      }
+        c = avcodec_alloc_context3(codec);
+        if (!c) {
+            E_LOG("ERROR: Could not allocate audio codec context");
+            return -2;
+        }
 
-      /* put sample parameters */
-      c->bit_rate = bitrate;
+        /* put sample parameters */
+        c->bit_rate = bitrate;
 
-      /* check that the encoder supports s16 pcm input */
-      c->sample_fmt = sample_fmt;
-      if (!check_sample_fmt(codec, c->sample_fmt)) {
-        E_LOG("ERROR: Encoder does not support sample format {}",
-          av_get_sample_fmt_name(c->sample_fmt));
-        return -3;
-      }
+        /* check that the encoder supports s16 pcm input */
+        c->sample_fmt = sample_fmt;
+        if (!check_sample_fmt(codec, c->sample_fmt)) {
+            E_LOG("ERROR: Encoder does not support sample format {}",
+                av_get_sample_fmt_name(c->sample_fmt));
+            return -3;
+        }
 
-      c->sample_rate = sample_rate;
-      c->channels = channels;
-      if (channels == 1)
-        c->channel_layout = AV_CH_LAYOUT_MONO;
-      else if (channels == 2)
-        c->channel_layout = AV_CH_LAYOUT_STEREO;
+        c->sample_rate = sample_rate;
+        c->channels = channels;
+        if (channels == 1)
+            c->channel_layout = AV_CH_LAYOUT_MONO;
+        else if (channels == 2)
+            c->channel_layout = AV_CH_LAYOUT_STEREO;
 
-      /* open it */
-      if (avcodec_open2(c, codec, NULL) < 0) {
-        E_LOG("Could not open codec");
-        return -4;
-      }
+        /* open it */
+        if (avcodec_open2(c, codec, NULL) < 0) {
+             E_LOG("Could not open codec");
+            return -4;
+        }
 
 
-      I_LOG("codec sample_rate = {}, sample_fmt = {}, channels = {}", c->sample_rate, c->sample_fmt, c->channels);
-      return 0;
+        I_LOG("codec sample_rate = {}, sample_fmt = {}, channels = {}", c->sample_rate, c->sample_fmt, c->channels);
+        return 0;
     }
 
     int getPacket(AVFrame* input, AVPacket* output) {
-
       int ret = 0;
       /* send the frame for encoding */
       ret = avcodec_send_frame(c, input);
       if (ret < 0) {
-        E_LOG("Error sending the frame to the encoder, ret={}", ret);
+        E_LOG("Error sending the frame to the encoder");
         return -1;
       }
 
@@ -186,9 +194,9 @@ namespace AudioEngine23 {
       return 0;
     }
 
-    // �ر�
+    // 关闭
     void close() {
-      T_LOG("encoder closed");
+      I_LOG("encoder closed");
       avcodec_free_context(&c);
     }
   private:
@@ -221,19 +229,19 @@ namespace AudioEngine23 {
 		int demux(std::vector<uint8_t> input, std::deque<std::vector<uint8_t>>& output) {
 			/*
         TODO
-        [ ] ����AU_HEADER_LENGTH
-        [ ] ����AU_HEADER
-        [ ] ȡ��AU����
-        [ ] ���ADTSͷ
+        [ ] 解析AU_HEADER_LENGTH
+        [ ] 解析AU_HEADER
+        [ ] 取出AU数据
+        [ ] 添加ADTS头
       */
       int aUHeadersLength = ((input[0] & 0xFF) << 16) + (input[1] & 0xFF);
-      int auCount = aUHeadersLength / 16;					//AAC֡������
-      int index = 2 + auCount * 2;							  //��һ�ν�������λ��
-      std::deque<std::vector<uint8_t>> aac_data; 	//ADTS֡�б�
+      int auCount = aUHeadersLength / 16;					//AAC帧的数量
+      int index = 2 + auCount * 2;							  //上一次解析到的位置
+      std::deque<std::vector<uint8_t>> aac_data; 	//ADTS帧列表
 
-      for (int i = 2; i < 2 + 2 * auCount; i += 2) {			//��������auHeader
-        int aacDataLen = ((input[i] & 0xFF) << 5) + ((input[i + 1] & 0xF8) >> 3); 		//AAC�����ݳ���(������header)
-        std::vector<uint8_t> aacData;											//AAC������
+      for (int i = 2; i < 2 + 2 * auCount; i += 2) {			//遍历所有auHeader
+        int aacDataLen = ((input[i] & 0xFF) << 5) + ((input[i + 1] & 0xF8) >> 3); 		//AAC的数据长度(不包括header)
+        std::vector<uint8_t> aacData;											//AAC的数据
         uint8_t* adtsHeader = new uint8_t[7];
         writeAdtsHeaders(adtsHeader, aacDataLen);
         for (int k = 0; k < 7; k++) {
@@ -327,13 +335,13 @@ namespace AudioEngine23 {
     int mux(std::vector<uint8_t> input, std::vector<uint8_t>& output) {
       /*
         TODO
-        [ ] �õ�AAC����(��ADTSͷ)
-        [ ] ȥ��ADTSͷ
-        [ ] ���AU_HEADER
-        [ ] ���AU_HEADER_LENGTH
+        [ ] 得到AAC数据(带ADTS头)
+        [ ] 去除ADTS头
+        [ ] 添加AU_HEADER
+        [ ] 添加AU_HEADER_LENGTH
       */
 
-      // vector<uint8_t> ת uint8_t*
+      // vector<uint8_t> 转 uint8_t*
       uint8_t* input_ = input.data();
 
       //I_LOG("input.size 1 = {}", input.size());
@@ -377,7 +385,7 @@ namespace AudioEngine23 {
       return aac_frame_size;
     }
 
-    //����AUͷ��LENGTH
+    //增加AU头及LENGTH
     int writeAuHeaders(std::vector<uint8_t>& input) {
       uint16_t size = input.size();
       return 0;
@@ -386,13 +394,13 @@ namespace AudioEngine23 {
     void printHex(uint8_t* input, int size) {
       std::string code_str;
       for (int i = 0; i < size; i++) {
-        //����16��������"ʮλ"�͡���λ��
+        //分离16进制数的"十位"和“个位”
         char s1 = char(input[i] >> 4);
         char s2 = char(input[i] & 0xf);
-        //������õ�������ת���ɶ�Ӧ��ASCII�룬���ֺ���ĸ�ֿ���ͳһ����Сд����
+        //将分离得到的数字转换成对应的ASCII码，数字和字母分开，统一按照小写处理
         s1 > 9 ? s1 += 87 : s1 += 48;
         s2 > 9 ? s2 += 87 : s2 += 48;
-        //������õ��ַ����뵽string��
+        //将处理好的字符放入到string中
         code_str.append(1, s1);
         code_str.append(1, s2);
       }

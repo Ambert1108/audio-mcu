@@ -11,15 +11,15 @@ namespace aom {
 	}
 
 	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback1, FreePortCallback callback2)
-		: ctx(std::move(ptr)), autoCloseCallback(callback1), freePortCallback(callback2), APCs(10), mixer(nullptr), encoder(nullptr) {
+		: ctx(std::move(ptr)), autoCloseCallback(callback1), freePortCallback(callback2), APCs(10), mixer(nullptr) {
 		startTime = seeker::time::currentTime();
 		mixer = std::make_unique<AudioMixer>();
 		status << TaskStatusType::run;
 		workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
 		eventTh = std::thread{ &MediaProcessUnit::eventHandle, this };
 		data.jobId = ctx->jobId;
-		I_LOG("[mpu::create->{}] codecType={}, outSampleRate={}, bitrate={}, timeInterval={}", 
-			ctx->jobId, ctx->codecType, ctx->outSampleRate, ctx->bitrate, ctx->interval);
+		I_LOG("[mpu::create->{}] codecType={}, outSampleRate={}", 
+			ctx->jobId, ctx->codecType, ctx->outSampleRate);
 		data.creatingDuration = seeker::time::currentTime() - startTime;
 	}
 
@@ -52,25 +52,16 @@ namespace aom {
 	int MediaProcessUnit::getChnlNum() const { return APCs.size(); }
 
 	void MediaProcessUnit::addChannel(const std::string& id, const Point& src, const Point& dst, int pt, int sampleRate) {
-		if (ctx->inSampleRate == 0) ctx->inSampleRate = sampleRate;
-		else {
-			if (ctx->inSampleRate != sampleRate) {
-				E_LOG("[mpu::addChannel->{}] channel[{}] input sampleRate {} is inconsistent with the set sampleRate {}", 
-					ctx->jobId, id, sampleRate, ctx->inSampleRate);
-				return;
-			}
-		}
 		{
 			uniqueLock lck(apcLocker);
-			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(ctx->jobId, id, src, dst, ctx->interval, freePortCallback));
+			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(ctx->jobId, id, src, dst, freePortCallback));
 
 			if (!newChnl.second) {
 				E_LOG("[mpu::addChannel->{}] add channel[{}] failed, id is exist", ctx->jobId, id);
 				return;
 			}
-
-			if (!newChnl.first->second->open(ctx->codecType, sampleRate, ctx->outSampleRate, 
-				ctx->bitrate, pt)) {
+			I_LOG("addchnl: codecTpye={}, inrate={}, outrate={}", ctx->codecType, sampleRate, ctx->outSampleRate);
+			if (!newChnl.first->second->open(ctx->codecType, sampleRate, ctx->outSampleRate, pt)) {
 				E_LOG("[mpu::addChannel->{}] open channel[{}] failed", ctx->jobId, id);
 				APCs.erase(id);
 				return;
@@ -153,17 +144,27 @@ namespace aom {
 	void MediaProcessUnit::workingLoop() {
 		/* MPU监控定时器 */
 		InvokeTimerPtr printTimer = nullptr;
-		setEncoder(ctx->outSampleRate);
-		AVFrame* frame = av_frame_alloc();
-		AVPacket* pkt = av_packet_alloc();
 		int64_t startTime = seeker::time::currentTime();
 		int64_t timePoint = 0;
 		int64_t timeTotal = 0;
 		int32_t timeCount = 0;
 		int noNeedCount = 0;
 		uint32_t ts = 0;
+		size_t lengthStandard = ctx->outSampleRate / 50; //参考标准长度
 		std::string mixId{};
 		try {
+			swrContext = swr_alloc_set_opts(NULL,
+				AV_CH_LAYOUT_MONO, // 输出声道布局
+				AV_SAMPLE_FMT_FLT, // 输出采样格式
+				48000,     // 输出采样率
+				AV_CH_LAYOUT_MONO,  // 输入声道布局
+				AV_SAMPLE_FMT_S16,      // 输入采样格式
+				48000,     // 输入采样率
+				0, NULL);
+			if (swr_init(swrContext) < 0) {
+				E_LOG("init swrContext fail");
+				throw std::runtime_error("init swrContext fail");
+			}
 			//每mpucheckInterval秒计算MPU相关参数
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				float timeAvg = (float)timeTotal / timeCount;
@@ -189,7 +190,6 @@ namespace aom {
 				std::unordered_map<std::string, std::vector<int16_t>> srcForm{}; //需要混音的列表
 				std::unordered_map<std::string, std::vector<int16_t>> dstForm{}; //需要编码发送的列表
 				bool needMix = true;
-				size_t lengthStandard = 8000 / 50; //参考标准长度
 				{
 					uniqueLock lck(apcLocker);
 					// 判断各通道数据大小是否符合标准，不符则跳过该通道混音
@@ -231,7 +231,6 @@ namespace aom {
 						}
 						else {
 							int32_t use = seeker::time::currentTime() - timePoint;
-							//std::this_thread::sleep_for(std::chrono::milliseconds(1));
 							if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(20 - use));
 							timeTotal += seeker::time::currentTime() - timePoint;
 							timeCount++;
@@ -294,8 +293,7 @@ namespace aom {
 					}
 					W_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
 				}
-				//uint32_t ts = (seeker::time::currentTime() - startTime) * 90;
-				ts += 160;
+				ts += lengthStandard;
 				//将可能的结果编码并下发给各通道发送
 				{
 					uniqueLock lck(apcLocker);
@@ -306,23 +304,34 @@ namespace aom {
 							W_LOG("[mpu::workingLoop->{}:{}] data is empty", ctx->jobId, key);
 							continue;
 						}
-						frame->data[0] = (uint8_t*)val.data();
-						frame->nb_samples = val.size();
-						frame->format = AV_SAMPLE_FMT_S16;
-						frame->channels = 1;
-						frame->pts = ts;
-						encoder->getPacket(frame, pkt);
-						it->second->sendRtp(std::vector<uint8_t>(pkt->data, pkt->data + pkt->size), ts);
-						av_packet_unref(pkt);
-						av_frame_unref(frame);
+						//frame->data[0] = (uint8_t*)val.data();
+						//frame->nb_samples = val.size();
+						//frame->format = av_sample_fmt_s16;
+						//frame->channels = 1;
+						//frame->pts = ts;
+						//encoder->getpacket(frame, pkt);
+						if (ctx->codecType == 1) {
+							it->second->sendRtp((uint8_t*)val.data(), val.size(), ts);
+						}
+						else if (ctx->codecType == 2) {
+							int outputFrameSize = av_samples_get_buffer_size(NULL, 1, val.size(), AV_SAMPLE_FMT_FLT, 1);
+							uint8_t* outputBuffer = (uint8_t*)av_malloc(outputFrameSize);
+							uint8_t* outputBufferArray[1]{};
+							outputBufferArray[0] = (uint8_t*)val.data();
+							int outputSamples = swr_convert(swrContext, &outputBuffer,
+								val.size(), (const uint8_t**)&outputBufferArray[0], val.size());
+							it->second->sendRtp(outputBuffer, val.size(), ts);
+							av_free(outputBuffer);
+						}
 					}
 				}
 				int32_t use = seeker::time::currentTime() - timePoint;
-				//std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				if (use < 20) std::this_thread::sleep_for(std::chrono::milliseconds(20 - use));
 				timeTotal += seeker::time::currentTime() - timePoint;
 				timeCount++;
 			}
+			swr_close(swrContext);  // 关闭上下文
+			swr_free(&swrContext);  // 释放上下文
 		}
 		catch (std::exception& ex) {
 			E_LOG("[mpu::workingLoop->{}] get exception: {}", ctx->jobId, ex.what());
@@ -396,23 +405,5 @@ namespace aom {
 			autoCloseCallback(ctx->jobId);
 		}
 		I_LOG("[mpu::eventHandle->{}] eventHandle thread is closed", ctx->jobId);
-	}
-
-	int MediaProcessUnit::setEncoder(int sampleRate) {
-		try {
-			if (encoder) {
-				encoder->close();
-				W_LOG("[mpu::setEncoder->{}] Encoder already exists, resetting...", ctx->jobId);
-			}
-			else encoder = std::make_unique<AudioEngine23::Encoder>();
-
-			encoder->open(8000, AV_SAMPLE_FMT_S16, 1);
-			I_LOG("[mpu::setEncoder->{}] Encoder opened success.", ctx->jobId);
-		}
-		catch (std::exception& ex) {
-			E_LOG("[mpu::setEncoder->{}] get exception: {}", ctx->jobId, ex.what());
-			return -1;
-		}
-		return 0;
 	}
 }

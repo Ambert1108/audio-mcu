@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(faust VERSION 0.0.3)
+project(faust VERSION 0.0.4)
 
 set(PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/inc)
 list(APPEND PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/core)
@@ -91,8 +91,8 @@ else()
 	include(${PROJECT_SOURCE_DIR}/inc/remix/remixlink.cmake)
 endif()
 
-find_library(FFT_LIBRARY fftw3)
-list(APPEND PROJECT_LIBS ${FFT_LIBRARY})
-message(STATUS "fft lib:${FFT_LIBRARY}")
+#find_library(FFT_LIBRARY fftw3)
+#list(APPEND PROJECT_LIBS ${FFT_LIBRARY})
+#message(STATUS "fft lib:${FFT_LIBRARY}")
 
 add_subdirectory(src)

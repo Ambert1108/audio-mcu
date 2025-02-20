@@ -1,5 +1,4 @@
 #include "AudioPorcessChnl.h"
-#include <fftw3.h>
 
 namespace aom {
 	double calculateRMS(const std::vector<int16_t>& samples) {
@@ -86,73 +85,15 @@ namespace aom {
 		}
 	}
 
-	const float NOISE_THRESHOLD = 0.05f; // 噪声阈值
-	const float VOICE_ENHANCEMENT_GAIN = 2.0f; // 人声增强增益
 
-	// 噪声抑制
-	void ns(std::vector<int16_t>& data) {
-		fftw_complex* in = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * FRAME_SIZE);
-		fftw_complex* out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * FRAME_SIZE);
-		fftw_plan p = fftw_plan_dft_1d(FRAME_SIZE, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
-		fftw_plan p_inv = fftw_plan_dft_1d(FRAME_SIZE, out, in, FFTW_BACKWARD, FFTW_ESTIMATE);
-
-		for (size_t i = 0; i < data.size(); i += FRAME_SIZE) {
-			// 填充输入数据
-			for (int j = 0; j < FRAME_SIZE; ++j) {
-				if (i + j < data.size()) {
-					in[j][0] = static_cast<float>(data[i + j]); // 实部
-					in[j][1] = 0.0f; // 虚部
-				}
-				else {
-					in[j][0] = 0.0f; // 填充零
-					in[j][1] = 0.0f;
-				}
-			}
-
-			// 执行 FFT
-			fftw_execute(p);
-
-			// 噪声抑制
-			for (int j = 0; j < FRAME_SIZE; ++j) {
-				float magnitude = std::sqrt(out[j][0] * out[j][0] + out[j][1] * out[j][1]);
-				if (magnitude < NOISE_THRESHOLD) {
-					out[j][0] = 0.0f; // 抑制噪声
-					out[j][1] = 0.0f;
-				}
-			}
-
-			// 人声增强：简单的增益调整
-			//for (int j = 0; j < FRAME_SIZE; ++j) {
-			//	float frequency = static_cast<float>(j) * 44100.0f / FRAME_SIZE; // 假设采样率为 44100 Hz
-			//	if (frequency >= 300.0f && frequency <= 3400.0f) {
-			//		out[j][0] *= VOICE_ENHANCEMENT_GAIN; // 增强人声频段
-			//		out[j][1] *= VOICE_ENHANCEMENT_GAIN;
-			//	}
-			//}
-
-			// 执行逆 FFT
-			fftw_execute(p_inv);
-
-			// 将结果写入输出缓冲区
-			for (int j = 0; j < FRAME_SIZE; ++j) {
-				if (i + j < data.size()) {
-					data[i + j] = static_cast<int16_t>(in[j][0] / FRAME_SIZE); // 归一化
-				}
-			}
-		}
-
-		fftw_destroy_plan(p);
-		fftw_destroy_plan(p_inv);
-		fftw_free(in);
-		fftw_free(out);
-	}
-
-	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& id, Point listen, Point dst,
-		double interval, FreePortCallback callback) : jobId(jobid), chnlId(id), listenPoint(listen), dstPoint(dst),
-		timeInterval(interval), freePortCallback(callback), decoder(nullptr), notifier(nullptr), switcher(nullptr) {
+	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& chnlid, Point listen, Point dst,
+		FreePortCallback callback) : jobId(jobid), chnlId(chnlid), listenPoint(listen), dstPoint(dst),
+		freePortCallback(callback), decoder(nullptr), encoder(nullptr), notifier(nullptr), switcher(nullptr) {
 		srcBuffer.reserve(30000);
-		std::string name1 = id + "_dec.pcm";
-		std::string name2 = id + "_enc.g711";
+		frame = av_frame_alloc();
+		pkt = av_packet_alloc();
+		std::string name1 = chnlid + "_dec.pcm";
+		std::string name2 = chnlid + "_enc.pcm";
 		if (saveInput == 1) decFile = fopen(name1.c_str(), "wb");
 		if (saveOutput == 1) encFile = fopen(name2.c_str(), "wb");
 	}
@@ -161,15 +102,20 @@ namespace aom {
 		close();
 	}
 
-	bool AudioPorcessChnl::open(int codecType, int inputRate, int outputRate, int bitrate, int payloadType) {
+	bool AudioPorcessChnl::open(int codecType, int inputRate, int outputRate, int payloadType) {
 		status << TaskStatusType::run;
-		if (setDecoder(inputRate) != 0) return false;
+		this->codecType = codecType;
+		sampleRate = outputRate;
+		I_LOG("open1 codecType={}, inputRate={}, outputRate={}", codecType, inputRate, outputRate);
+		if (setDecoder(codecType, inputRate) != 0) return false;
+		I_LOG("open2 codecType={}, inputRate={}, outputRate={}", codecType, inputRate, outputRate);
+		if (setEncoder(codecType, outputRate) != 0) return false;
 		this->payloadType = payloadType;
 		//随机设置ssrc
 		ssrc = rand() % 9000000 + 1000000 + (int32_t)seeker::time::currentTime();
 		work1Th = std::thread{ &AudioPorcessChnl::workingLoop, this };
-		I_LOG("[apc::open->{}:{}] channel open success. codecType:{}, inputRate:{}, "
-			"outputRate:{}, bitrate:{}, pt:{}", jobId, chnlId, codecType, inputRate, outputRate, bitrate, payloadType);
+		I_LOG("[apc::open->{}:{}] channel open success. codecType:{}, inputRate:{}, payloadType:{}", 
+			jobId, chnlId, codecType, inputRate, payloadType);
 		return true;
 	}
 
@@ -177,6 +123,8 @@ namespace aom {
 		if (status.getStatus() == TaskStatusType::end) return;
 		status << TaskStatusType::down;
 		if (work1Th.joinable()) work1Th.join();
+		if(frame) av_frame_free(&frame);
+		if(pkt) av_packet_free(&pkt);
 		status << TaskStatusType::end;
 		freePortCallback(listenPoint.port);
 		I_LOG("[apc::close->{}:{}] channel close success", jobId, chnlId);
@@ -211,11 +159,31 @@ namespace aom {
 
 	int16_t AudioPorcessChnl::getPort() const { return listenPoint.port; }
 
-	void AudioPorcessChnl::sendRtp(std::vector<uint8_t> payload, uint32_t ts) {
-		if (saveOutput == 1) fwrite(payload.data(), 1, payload.size(), encFile);
-		seeker::rtp::Rtp rtpPacket = seeker::rtp::Rtp(payloadType, 1, seqNum++, ts, ssrc, payload);
+	void AudioPorcessChnl::sendRtp(uint8_t* pcmData, int nb_samples, uint32_t ts) {
+		if (codecType == 1) {
+			if (saveOutput == 1) fwrite(pcmData, 1, nb_samples * 2, encFile);
+		}
+		else if (codecType == 2) {
+			if (saveOutput == 1) fwrite(pcmData, 1, nb_samples * 4, encFile);
+		}
+		frame->data[0] = pcmData;
+		frame->nb_samples = nb_samples;
+		frame->channels = 1;
+		frame->pts = ts;
+		if (codecType == 1) {
+			frame->format = 1;
+		}
+		else if (codecType == 2) {
+			frame->format = 8;
+		}
+		encoder->getPacket(frame, pkt);
+		this->ts += (sampleRate / 50);
+		std::vector<uint8_t> payload = std::vector<uint8_t>(pkt->data, pkt->data + pkt->size);
+		seeker::rtp::Rtp rtpPacket = seeker::rtp::Rtp(payloadType, 1, seqNum++, this->ts, ssrc, payload);
 		std::deque<Rtp> sendQueue{ std::move(rtpPacket) };
 		switcher->sendRtp(sendQueue);
+		av_packet_unref(pkt);
+		av_frame_unref(frame);
 	}
 
 	bool AudioPorcessChnl::ready() const { return chnlReady.load(); }
@@ -261,6 +229,18 @@ namespace aom {
 		double dbTotal = 0.0;
 		int32_t timeCount = 0;
 		try {
+			swrContext = swr_alloc_set_opts(NULL,
+				AV_CH_LAYOUT_MONO, // 输出声道布局
+				AV_SAMPLE_FMT_S16, // 输出采样格式
+				48000,     // 输出采样率
+				AV_CH_LAYOUT_MONO,  // 输入声道布局
+				AV_SAMPLE_FMT_FLT,      // 输入采样格式
+				48000,     // 输入采样率
+				0, NULL);
+			if (swr_init(swrContext) < 0) {
+				E_LOG("init swrContext fail");
+				throw std::runtime_error("init swrContext fail");
+			}
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				pcmTotal /= 2;
 				float timeAvg = (float)timeTotal / timeCount;
@@ -356,7 +336,6 @@ namespace aom {
 					}
 					int size = frame->nb_samples * av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format))
 						* frame->channels;
-					if(saveInput == 1) fwrite(frame->data[0], 1, size, decFile);
 					int32_t inc = ts - lastTs;
 					D_LOG("seq:{}, ts:{}, increment:{}, audio frame size is {}", seq, ts, inc, size);
 					lastTs = ts;
@@ -364,38 +343,74 @@ namespace aom {
 					if (t > 5) W_LOG("[apc::workingLoop->{}:{}] dec use {}ms", jobId, chnlId, t);
 					usePoint = seeker::time::currentTime();
 					// 7.将解码数据存入源缓存区中
-					{
-						lockGuard lck(srcBufLocker);
-						pcmTotal += srcBuffer.size();
-						if (srcBuffer.size() > (int64_t)8000 / 50 * 6) {
-							W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
-							if (micOpenNeedClear) {
-								srcBuffer.clear();
-								micOpenNeedClear = false;
+					if (codecType == 1) {
+						if(saveInput == 1) fwrite(frame->data[0], 1, size, decFile);
+						{
+							lockGuard lck(srcBufLocker);
+							pcmTotal += srcBuffer.size();
+							if (srcBuffer.size() > (int64_t)sampleRate / 50 * 6) {
+								W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
+								if (micOpenNeedClear) {
+									srcBuffer.clear();
+									micOpenNeedClear = false;
+								}
+								else {
+									srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
+								}
 							}
-							else {
-								srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
-							}
+							srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
+							D_LOG("recv pcm size = {}", size / 2);
+							//ns(srcBuffer);
+							//dbTotal += calculateVolume(srcBuffer);
+							dbTotal += getDB(srcBuffer);
+							//voiceActivityDetection(srcBuffer);
 						}
-						srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
-						D_LOG("recv pcm size = {}", size / 2);
-						//ns(srcBuffer);
-						//dbTotal += calculateVolume(srcBuffer);
-						dbTotal += getDB(srcBuffer);
-						//voiceActivityDetection(srcBuffer);
+						t = seeker::time::currentTime() - usePoint;
+						if (t > 5) W_LOG("[apc::workingLoop->{}:{}] insert use {}ms", jobId, chnlId, t);
 					}
-					t = seeker::time::currentTime() - usePoint;
-					if (t > 5) W_LOG("[apc::workingLoop->{}:{}] insert use {}ms", jobId, chnlId, t);
+					else if (codecType == 2) {
+						int outputFrameSize = av_samples_get_buffer_size(NULL, frame->channels, frame->nb_samples, AV_SAMPLE_FMT_S16, 1);
+						uint8_t* outputBuffer = (uint8_t*)av_malloc(outputFrameSize);
+						int outputSamples = swr_convert(swrContext,
+							&outputBuffer,
+							frame->nb_samples,
+							(const uint8_t**)frame->data,
+							frame->nb_samples);
+						{
+							lockGuard lck(srcBufLocker);
+							pcmTotal += srcBuffer.size();
+							if (srcBuffer.size() > (int64_t)sampleRate / 50 * 20) {
+								W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
+								if (micOpenNeedClear) {
+									srcBuffer.clear();
+									micOpenNeedClear = false;
+								}
+								else {
+									srcBuffer.erase(srcBuffer.begin(), srcBuffer.begin() + (srcBuffer.size() / 2));
+								}
+							}
+							if (saveInput == 1) fwrite(outputBuffer, 1, outputFrameSize, decFile);
+							srcBuffer.insert(srcBuffer.end(), (int16_t*)outputBuffer, (int16_t*)outputBuffer + outputFrameSize / 2);
+							D_LOG("recv pcm size = {}", size / 2);
+							//ns(srcBuffer);
+							//dbTotal += calculateVolume(srcBuffer);
+							dbTotal += getDB(srcBuffer);
+							//voiceActivityDetection(srcBuffer);
+						}
+						av_free(outputBuffer);
+						t = seeker::time::currentTime() - usePoint;
+						if (t > 5) W_LOG("[apc::workingLoop->{}:{}] insert use {}ms", jobId, chnlId, t);
+					}
 					av_frame_unref(frame);
 					av_packet_unref(pkt);
 					recvQueue.pop_front();
 				}
-				//int32_t use = seeker::time::currentTime() - timePoint;
-				//if (use < 21) std::this_thread::sleep_for(std::chrono::milliseconds(21 - use));
 				int64_t loopTime = seeker::time::currentTime() - timePoint;
 				timeTotal += loopTime;
 				timeCount++;
 			}
+			swr_close(swrContext);  // 关闭上下文
+			swr_free(&swrContext);  // 释放上下文
 		}
 		catch (std::exception& ex) {
 			E_LOG("[apc::workingLoop->{}:{}] get exception: {}", jobId, chnlId, ex.what());
@@ -405,7 +420,7 @@ namespace aom {
 		I_LOG("[apc::workingLoop->{}:{}] thread is close, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 	}
 
-	int AudioPorcessChnl::setDecoder(int sampleRate) {
+	int AudioPorcessChnl::setDecoder(int codecType, int sampleRate) {
 		try {
 			if (decoder) {
 				decoder->close();
@@ -414,11 +429,42 @@ namespace aom {
 			else {
 				decoder = std::make_unique<AudioEngine23::Decoder>();
 			}
-			decoder->open(sampleRate, AV_SAMPLE_FMT_S16, 1);
+			if (codecType == 1) {
+				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_S16, 1);
+			}
+			else if (codecType == 2) {
+				I_LOG("opus decoder open");
+				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
+			}
 			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}
 		catch (std::exception& ex) {
 			E_LOG("[apc::setDecoder->{}:{}] get exception: {}", jobId, chnlId, ex.what());
+			return -1;
+		}
+		return 0;
+	}
+
+
+	int AudioPorcessChnl::setEncoder(int codecType, int sampleRate) {
+		try {
+			if (encoder) {
+				encoder->close();
+				W_LOG("[apc::setEncoder->{}] Encoder already exists, resetting...", jobId);
+			}
+			else encoder = std::make_unique<AudioEngine23::Encoder>();
+
+			if (codecType == 1) {
+				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_S16, 1);
+			}
+			else if (codecType == 2) {
+				I_LOG("opus encoder open");
+				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
+			}
+			I_LOG("[apc::setEncoder->{}] Encoder opened success.", jobId);
+		}
+		catch (std::exception& ex) {
+			E_LOG("[apc::setEncoder->{}] get exception: {}", jobId, ex.what());
 			return -1;
 		}
 		return 0;

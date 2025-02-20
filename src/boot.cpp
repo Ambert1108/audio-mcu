@@ -11,6 +11,8 @@ int main(int argc, char* argv[]) {
 	else {
 		std::cout << "no application file, use default file" << std::endl;
 		profile = "resources/config.ini";
+
+
 	}
 	std::cout << "compass is Loading" << std::endl;
 	std::cout << "Reading config file:" << profile << std::endl;

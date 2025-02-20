@@ -113,9 +113,6 @@ namespace aom {
 		const int portRange = seeker::IniConfig::GetInteger("main", "port_range", 200);
 
 		const std::string mediaIp = seeker::IniConfig::Get("media", "ip", "0.0.0.0");
-		const int codecType = seeker::IniConfig::GetInteger("media", "codec_type", 1);
-		const int bitrate = seeker::IniConfig::GetInteger("media", "bit_rate", 960000);
-		const int samplerate = seeker::IniConfig::GetInteger("media", "sample_rate", 8000);
 		const int pt = seeker::IniConfig::GetInteger("media", "payload_type", 97);
 
 
