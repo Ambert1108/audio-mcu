@@ -83,10 +83,12 @@ namespace aom {
     std::string jobId = "unknown";
     mutable int codecType = -1;
     mutable int sampleRate = -1;
+    std::string url = "";
 
     friend void from_json(const nlohmann::json& j, CreateJobContext& context) {
       j.at("codecType").get_to(context.codecType);
       j.at("sampleRate").get_to(context.sampleRate);
+      if(j.contains("callbackUrl")) j.at("callbackUrl").get_to(context.url);
     }
   };
 
@@ -129,4 +131,9 @@ namespace aom {
     std::string channelId = "unknown";
   };
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MicCtrlContext, jobId, channelId);
+
+  struct CallbackRequest {
+    std::string channelId;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CallbackRequest, channelId);
 }

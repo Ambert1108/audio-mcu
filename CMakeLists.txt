@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(faust VERSION 0.0.4)
+project(faust VERSION 0.0.5)
 
 set(PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/inc)
 list(APPEND PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/core)
@@ -17,7 +17,7 @@ if (MSVC)
 endif (MSVC)
 find_package(Threads REQUIRED)
 
-set(Machine super9 CACHE STRING "machine type")
+set(Machine super8 CACHE STRING "machine type")
 option(USE_X_MIX "use X team mix tool" OFF)
 message("Machine is ${Machine}, use xteam mix tool is ${USE_X_MIX}")
 

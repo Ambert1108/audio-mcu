@@ -10,6 +10,36 @@ namespace aom {
 		return s;
 	}
 
+	inline std::shared_ptr<httplib::Client> initClient(const std::string callbackUrl, std::string& ASUrl) {
+		const std::string str = callbackUrl;
+		std::string ip;
+		int port;
+		std::string Url;
+		std::string address;
+		const static std::string ipRegString = R"regex(//(\d+).(\d+).(\d+).(\d+))regex";
+		const static std::regex ipReg(ipRegString);
+		const static std::string portRegString = R"regex((\d+)/)regex";
+		const static std::regex portReg(portRegString);
+		std::smatch sm;
+		if (std::regex_search(str, sm, ipReg)) {
+			ip = std::string(sm[1].first, sm[4].second);
+			if (std::regex_search(str, sm, portReg)) {
+				std::string port1(sm[1].first, sm[1].second);
+				port = std::atoi(port1.c_str());
+				ASUrl = std::string(sm[1].second, str.end());
+				address = std::string(str.begin(), sm[1].second);
+				I_LOG("port {}", port);
+				I_LOG("url {}", ASUrl);
+				I_LOG("http address {}", address);
+			}
+		}
+		else {
+			E_LOG("initClient error");
+			return nullptr;
+		}
+		return std::make_shared<httplib::Client>(ip, port);
+	}
+
 	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback1, FreePortCallback callback2)
 		: ctx(std::move(ptr)), autoCloseCallback(callback1), freePortCallback(callback2), APCs(10), mixer(nullptr) {
 		startTime = seeker::time::currentTime();
@@ -17,16 +47,41 @@ namespace aom {
 		status << TaskStatusType::run;
 		workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
 		eventTh = std::thread{ &MediaProcessUnit::eventHandle, this };
+		client = initClient(ctx->callbackUrl, url);
+		if (client) {
+			callback = InvokeTimer::CreateTimer(std::chrono::seconds(callbackTime), true, [&] {
+				if (chnlId != chnlIdRecord) {
+					CallbackRequest callbackReq{ chnlId };
+					std::string req_body;
+					I_LOG("[mpu::callback->{}] req signling body:\n{}", 
+						ctx->jobId, seeker::json::toJsonString(callbackReq));
+					auto res = client->Post(url, seeker::json::toJsonString(callbackReq), "application/json");//向指定的地址发送请求body1，并接收回复res1
+					if (res == nullptr) {
+						E_LOG("[mpu::callback->{}] no rsp from signling", ctx->jobId);
+					}
+					else {
+						if (res->status == 200) {
+							I_LOG("[mpu::callback->{}] signling rsp body:\n{}", ctx->jobId, res->body);	
+						}
+						else {
+							E_LOG("[mpu::callback->{}] signling rsp status={}, body:\n{}", ctx->jobId, res->status, res->body);
+						}
+					}
+					chnlIdRecord = chnlId;
+				}
+				});
+			callback->Start();
+		}
 		data.jobId = ctx->jobId;
-		I_LOG("[mpu::create->{}] codecType={}, outSampleRate={}", 
-			ctx->jobId, ctx->codecType, ctx->outSampleRate);
+		I_LOG("[mpu::create->{}] codecType={}, outSampleRate={}, url={}", 
+			ctx->jobId, ctx->codecType, ctx->outSampleRate, ctx->callbackUrl);
 		data.creatingDuration = seeker::time::currentTime() - startTime;
 	}
 
 	MediaProcessUnit::~MediaProcessUnit() {
 		//判断关闭线程是否可执行并执行完毕
 		if (stopTh.joinable()) stopTh.join();
-		
+		if (callback) callback->Cancel();
 		//MPU转为exce态或未收到RTP包时事件处理线程将结束，导致无法接收外部关闭事件，需要自己主动关闭
 		stop();
 
@@ -244,7 +299,7 @@ namespace aom {
 						std::sort(chnlList.begin(), chnlList.end(), [](const auto& a, const auto& b) {
 							return a.second > b.second;
 						});
-
+						chnlId = chnlList.begin()->first;
 						// 获取各通道音频裸数据
 						mixId.clear();
 						for (size_t i = 0; i < chnlList.size(); ++i) {

@@ -108,7 +108,7 @@ namespace aom {
 			writeLock lck(mpuFormLocker);
 			auto newMpu = mpus.try_emplace(context.jobId, 
 				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, context.codecType,
-				context.sampleRate), endJobFunc, freePortFunc));
+				context.sampleRate, context.url), endJobFunc, freePortFunc));
 			if (!newMpu.second) return JoinJobError;
 		}
 		status.runningJob.fetch_add(1);

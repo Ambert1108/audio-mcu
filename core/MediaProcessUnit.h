@@ -10,6 +10,9 @@
 #include "seeker/common.h"
 #include "seeker/logger.h"
 #include "seeker/loggerApi.h"
+#include "seeker/json.hpp"
+#include "utils/InvokeTimer.hpp"
+
 #if USE_X_MIX
 #include "audioMix/core/audioMix.h"
 using namespace hybird;
@@ -48,8 +51,9 @@ namespace aom {
 		std::string jobId;
 		int codecType;
 		int outSampleRate;
-		MpuContext(std::string id, int type, int outrate) 
-			: jobId(id), codecType(type), outSampleRate(outrate) {};
+		std::string callbackUrl;
+		MpuContext(std::string id, int type, int outrate, std::string url)
+			: jobId(id), codecType(type), outSampleRate(outrate), callbackUrl(url) {};
 	};
 	typedef std::unique_ptr<MpuContext> MpuCtxPtr;
 
@@ -97,14 +101,17 @@ namespace aom {
 		mutable std::mutex apcLocker{};
 		mutable std::mutex mixerLocker{};
 
+		InvokeTimerPtr callback;
 		TaskStatus status;
 		MpuCtxPtr ctx;
 		MediaProcessData data;
 		UniqueMix mixer;
 		SwrContext* swrContext;
+		std::string url, chnlIdRecord, chnlId;
+		std::shared_ptr<httplib::Client> client;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
-		const int noRtpTime = seeker::IniConfig::GetInteger("auto", "no_rtp_time", 30);
+		const int callbackTime = seeker::IniConfig::GetInteger("main", "call_back", 1);
 
 		void stop();
 		void output();
