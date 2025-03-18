@@ -109,9 +109,12 @@ namespace aom {
 		SwrContext* swrContext;
 		std::string url, chnlIdRecord, chnlId;
 		std::shared_ptr<httplib::Client> client;
+		int64_t callbackTimePoint = 0;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 		const int callbackTime = seeker::IniConfig::GetInteger("main", "call_back", 1);
+		const int dbThreshold = seeker::IniConfig::GetInteger("media", "db_threshold", 55);
+		const int noVoiceTime = seeker::IniConfig::GetInteger("media", "no_voice_time", 3);
 
 		void stop();
 		void output();

@@ -50,6 +50,9 @@ namespace aom {
 		client = initClient(ctx->callbackUrl, url);
 		if (client) {
 			callback = InvokeTimer::CreateTimer(std::chrono::seconds(callbackTime), true, [&] {
+				if (seeker::time::currentTime() - callbackTimePoint >= noVoiceTime * 1000) {
+					chnlId = "";
+				}
 				if (chnlId != chnlIdRecord) {
 					CallbackRequest callbackReq{ chnlId };
 					std::string req_body;
@@ -299,7 +302,13 @@ namespace aom {
 						std::sort(chnlList.begin(), chnlList.end(), [](const auto& a, const auto& b) {
 							return a.second > b.second;
 						});
-						chnlId = chnlList.begin()->first;
+
+						// 获取最大分贝用户id，用于高亮显示
+						if (chnlList.begin()->second >= dbThreshold) {
+							chnlId = chnlList.begin()->first;
+							callbackTimePoint = seeker::time::currentTime();
+						}
+
 						// 获取各通道音频裸数据
 						mixId.clear();
 						for (size_t i = 0; i < chnlList.size(); ++i) {
