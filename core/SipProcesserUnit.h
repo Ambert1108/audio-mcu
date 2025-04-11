@@ -86,18 +86,7 @@ namespace aom {
         "a=fmtp:121 0-16\r\n"
         "a=a=rtcp-fb:* ccm tmmbr\r\n";
 
-      pj::SdpSession newSdpSession;
-
-      pjmedia_sdp_session* parsedSdp = NULL;
-      pj_status_t status = pjmedia_sdp_parse(pool, const_cast<char*>(newSdp.c_str()), newSdp.size(), &parsedSdp);
-      if (status != PJ_SUCCESS) {
-        I_LOG("status: {}", status);
-        I_LOG("parse sdp failed");
-        return;
-      }
-
-      newSdpSession.fromPj(*parsedSdp);
-      prm.sdp = newSdpSession;
+      prm.sdp.wholeSdp = newSdp;
 
       I_LOG("modify sdp:\n{}", prm.sdp.wholeSdp);
     }

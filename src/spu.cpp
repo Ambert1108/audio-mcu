@@ -45,45 +45,6 @@ namespace aom {
 
   void SipProcessUnit::run() {
     I_LOG("Sip Process Unit Start listen");
-    /*while (isRunning) {
-      if (!hi::GetMsg(msg)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        continue;
-      }
-      try {
-        switch (msg.id) {
-          case msgTo(MessageType::CREATE_MEETING): {
-            std::string userName = std::any_cast<std::string>(msg.data);
-            if (userName.size() > 11) {
-              userName = userName.substr(userName.length() - 11, 11);
-            }
-            std::regex pattern("audio(\\d{6})");
-            std::smatch match;
-
-            if (std::regex_match(userName, match, pattern)) {
-              registerAccount(userName);
-              CreateJobContext createCtx;
-              createCtx.jobId = match[1];
-              createCtx.url = "empty";
-              mcu->createMpu(createCtx);
-            }
-            else {
-              W_LOG("jobId {} regex failed", userName);
-            }
-            break;
-          }
-          case msgTo(MessageType::ADD_CHANNEL): {
-            break;
-          }
-          default:
-            break;
-        }
-      }
-      catch (std::exception& ex) {
-        E_LOG("[SipProcessUnit::run] catch exception:{}", ex.what());
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }*/
 
     while (isRunning) {
       ep.libHandleEvents(100);
