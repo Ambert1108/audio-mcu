@@ -10,74 +10,74 @@ namespace aom {
 		return s;
 	}
 
-	inline std::shared_ptr<httplib::Client> initClient(const std::string callbackUrl, std::string& ASUrl) {
-		const std::string str = callbackUrl;
-		std::string ip;
-		int port;
-		std::string Url;
-		std::string address;
-		const static std::string ipRegString = R"regex(//(\d+).(\d+).(\d+).(\d+))regex";
-		const static std::regex ipReg(ipRegString);
-		const static std::string portRegString = R"regex((\d+)/)regex";
-		const static std::regex portReg(portRegString);
-		std::smatch sm;
-		if (std::regex_search(str, sm, ipReg)) {
-			ip = std::string(sm[1].first, sm[4].second);
-			if (std::regex_search(str, sm, portReg)) {
-				std::string port1(sm[1].first, sm[1].second);
-				port = std::atoi(port1.c_str());
-				ASUrl = std::string(sm[1].second, str.end());
-				address = std::string(str.begin(), sm[1].second);
-				I_LOG("port {}", port);
-				I_LOG("url {}", ASUrl);
-				I_LOG("http address {}", address);
-			}
-		}
-		else {
-			E_LOG("initClient error");
-			return nullptr;
-		}
-		return std::make_shared<httplib::Client>(ip, port);
-	}
+	//inline std::shared_ptr<httplib::Client> initClient(const std::string callbackUrl, std::string& ASUrl) {
+	//	const std::string str = callbackUrl;
+	//	std::string ip;
+	//	int port;
+	//	std::string Url;
+	//	std::string address;
+	//	const static std::string ipRegString = R"regex(//(\d+).(\d+).(\d+).(\d+))regex";
+	//	const static std::regex ipReg(ipRegString);
+	//	const static std::string portRegString = R"regex((\d+)/)regex";
+	//	const static std::regex portReg(portRegString);
+	//	std::smatch sm;
+	//	if (std::regex_search(str, sm, ipReg)) {
+	//		ip = std::string(sm[1].first, sm[4].second);
+	//		if (std::regex_search(str, sm, portReg)) {
+	//			std::string port1(sm[1].first, sm[1].second);
+	//			port = std::atoi(port1.c_str());
+	//			ASUrl = std::string(sm[1].second, str.end());
+	//			address = std::string(str.begin(), sm[1].second);
+	//			I_LOG("port {}", port);
+	//			I_LOG("url {}", ASUrl);
+	//			I_LOG("http address {}", address);
+	//		}
+	//	}
+	//	else {
+	//		E_LOG("initClient error");
+	//		return nullptr;
+	//	}
+	//	return std::make_shared<httplib::Client>(ip, port);
+	//}
 
 	MediaProcessUnit::MediaProcessUnit(MpuCtxPtr&& ptr, RemoveCallback callback1, FreePortCallback callback2)
 		: ctx(std::move(ptr)), autoCloseCallback(callback1), freePortCallback(callback2), APCs(10), mixer(nullptr) {
 		startTime = seeker::time::currentTime();
 		mixer = std::make_unique<AudioMixer>();
 		status << TaskStatusType::run;
-		workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
+		//workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
 		eventTh = std::thread{ &MediaProcessUnit::eventHandle, this };
-		client = initClient(ctx->callbackUrl, url);
-		if (client) {
-			callback = InvokeTimer::CreateTimer(std::chrono::seconds(callbackTime), true, [&] {
-				if (seeker::time::currentTime() - callbackTimePoint >= noVoiceTime * 1000) {
-					chnlId = "";
-				}
-				if (chnlId != chnlIdRecord) {
-					CallbackRequest callbackReq{ chnlId };
-					std::string req_body;
-					I_LOG("[mpu::callback->{}] req signling body:\n{}", 
-						ctx->jobId, seeker::json::toJsonString(callbackReq));
-					auto res = client->Post(url, seeker::json::toJsonString(callbackReq), "application/json");//向指定的地址发送请求body1，并接收回复res1
-					if (res == nullptr) {
-						E_LOG("[mpu::callback->{}] no rsp from signling", ctx->jobId);
-					}
-					else {
-						if (res->status == 200) {
-							I_LOG("[mpu::callback->{}] signling rsp body:\n{}", ctx->jobId, res->body);	
-						}
-						else {
-							E_LOG("[mpu::callback->{}] signling rsp status={}, body:\n{}", ctx->jobId, res->status, res->body);
-						}
-					}
-					chnlIdRecord = chnlId;
-				}
-				});
-			callback->Start();
-		}
+		//client = initClient(ctx->callbackUrl, url);
+		//if (client) {
+		//	callback = InvokeTimer::CreateTimer(std::chrono::seconds(callbackTime), true, [&] {
+		//		if (seeker::time::currentTime() - callbackTimePoint >= noVoiceTime * 1000) {
+		//			chnlId = "";
+		//		}
+		//		if (chnlId != chnlIdRecord) {
+		//			CallbackRequest callbackReq{ chnlId };
+		//			std::string req_body;
+		//			I_LOG("[mpu::callback->{}] req signling body:\n{}", 
+		//				ctx->jobId, seeker::json::toJsonString(callbackReq));
+		//			auto res = client->Post(url, seeker::json::toJsonString(callbackReq), "application/json");//向指定的地址发送请求body1，并接收回复res1
+		//			if (res == nullptr) {
+		//				E_LOG("[mpu::callback->{}] no rsp from signling", ctx->jobId);
+		//			}
+		//			else {
+		//				if (res->status == 200) {
+		//					I_LOG("[mpu::callback->{}] signling rsp body:\n{}", ctx->jobId, res->body);	
+		//				}
+		//				else {
+		//					E_LOG("[mpu::callback->{}] signling rsp status={}, body:\n{}", ctx->jobId, res->status, res->body);
+		//				}
+		//			}
+		//			chnlIdRecord = chnlId;
+		//		}
+		//		});
+		//	callback->Start();
+		//}
 		data.jobId = ctx->jobId;
-		I_LOG("[mpu::create->{}] codecType={}, outSampleRate={}, url={}", 
-			ctx->jobId, ctx->codecType, ctx->outSampleRate, ctx->callbackUrl);
+		I_LOG("[mpu::create->{}] url={}", 
+			ctx->jobId, ctx->callbackUrl);
 		data.creatingDuration = seeker::time::currentTime() - startTime;
 	}
 
@@ -109,7 +109,8 @@ namespace aom {
 
 	int MediaProcessUnit::getChnlNum() const { return APCs.size(); }
 
-	void MediaProcessUnit::addChannel(const std::string& id, const Point& src, const Point& dst, int pt, int sampleRate) {
+	void MediaProcessUnit::addChannel(const std::string& id, const Point& src, const Point& dst, int pt,
+		int codecType, int inRate, int outRate) {
 		{
 			uniqueLock lck(apcLocker);
 			auto newChnl = APCs.try_emplace(id, std::make_unique<AudioPorcessChnl>(ctx->jobId, id, src, dst, freePortCallback));
@@ -118,12 +119,17 @@ namespace aom {
 				E_LOG("[mpu::addChannel->{}] add channel[{}] failed, id is exist", ctx->jobId, id);
 				return;
 			}
-			I_LOG("addchnl: codecTpye={}, inrate={}, outrate={}", ctx->codecType, sampleRate, ctx->outSampleRate);
-			if (!newChnl.first->second->open(ctx->codecType, sampleRate, ctx->outSampleRate, pt)) {
+			I_LOG("addchnl: codecTpye={}, inrate={}, outrate={}", ctx->codecType, inRate, outRate);
+			if (ctx->outSampleRate == -1) ctx->outSampleRate = outRate;
+			if (ctx->codecType == -1) ctx->codecType = codecType;
+			if (!newChnl.first->second->open(ctx->codecType, inRate, outRate, pt)) {
 				E_LOG("[mpu::addChannel->{}] open channel[{}] failed", ctx->jobId, id);
 				APCs.erase(id);
 				return;
 			}
+		}
+		if (!workTh.joinable()) {
+			workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
 		}
 		uniqueLock lck(mixerLocker);
 		mixer->addStreamId(id);

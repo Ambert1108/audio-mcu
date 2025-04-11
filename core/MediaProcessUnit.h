@@ -13,13 +13,8 @@
 #include "seeker/json.hpp"
 #include "utils/InvokeTimer.hpp"
 
-#if USE_X_MIX
-#include "audioMix/core/audioMix.h"
-using namespace hybird;
-#else
 #include "remix/remix.h"
 using namespace Remix;
-#endif
 
 #include "AudioPorcessChnl.h"
 
@@ -49,16 +44,16 @@ namespace aom {
 
 	struct MpuContext {
 		std::string jobId;
-		int codecType;
-		int outSampleRate;
+		int codecType = -1;
+		int outSampleRate = -1;
 		std::string callbackUrl;
-		MpuContext(std::string id, int type, int outrate, std::string url)
-			: jobId(id), codecType(type), outSampleRate(outrate), callbackUrl(url) {};
+		MpuContext(std::string id, std::string url)
+			: jobId(id), callbackUrl(url) {};
 	};
 	typedef std::unique_ptr<MpuContext> MpuCtxPtr;
 
 	typedef std::unique_ptr<class MediaProcessUnit> UniqueMPU;
-	typedef std::function<HandleError(std::string)> RemoveCallback;
+	typedef std::function<bool(std::string)> RemoveCallback;
 	using UniqueMix = std::unique_ptr<AudioMixer>;
 	using namespace std::chrono_literals;
 
@@ -72,7 +67,8 @@ namespace aom {
 		TaskStatusType getStatus() const;
 		const MediaProcessData& getData() const;
 		int getChnlNum() const;
-		void addChannel(const std::string& id, const Point& src, const Point& dst, int pt, int sampleRate);
+		void addChannel(const std::string& id, const Point& src, const Point& dst, int pt, 
+			int codecType, int inRate, int outRate);
 		void removeChannel(const std::string& id);
 		void openChnlMic(const std::string&);
 		void closeChnlMic(const std::string&);
@@ -108,7 +104,7 @@ namespace aom {
 		UniqueMix mixer;
 		SwrContext* swrContext;
 		std::string url, chnlIdRecord, chnlId;
-		std::shared_ptr<httplib::Client> client;
+		//std::shared_ptr<httplib::Client> client;
 		int64_t callbackTimePoint = 0;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
@@ -136,7 +132,8 @@ namespace aom {
 			MediaProcessUnit* master = nullptr;
 			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
 			master->addChannel(context.chnlId, Point{ context.listenIp, context.listenPort
-				}, Point{ context.dstIp, context.dstPort }, context.payloadType, context.sampleRate);
+				}, Point{ context.dstIp, context.dstPort }, context.payloadType, context.codecType,
+				context.inSampleRate, context.outSampleRate);
 		};
 
 		AddChnlContext context;

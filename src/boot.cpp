@@ -1,5 +1,5 @@
 #include "Config.h"
-#include "HttpProcessUnit.h"
+#include "SipProcesserUnit.h"
 
 #include <iostream>
 
@@ -45,15 +45,15 @@ int main(int argc, char* argv[]) {
 		I_LOG("//                              //");
 		I_LOG("//////////////////////////////////");
 		
-		std::string httpIp = config::Get("main", "ip", "0.0.0.0");
-		port_t httpPort = config::GetInteger("main", "port", 50012);
-		if (httpIp.empty()) {
-			E_LOG("[boot::Error] httpServer.host=[{}]", httpIp);
+		std::string ip = config::Get("main", "ip", "0.0.0.0");
+		port_t port = config::GetInteger("main", "port", 5060);
+		if (ip.empty()) {
+			E_LOG("[boot::Error] httpServer.host=[{}]", ip);
 			exit(-1);
 		}
 		
-		if (httpPort < 1024) {
-			E_LOG("[boot::Error] httpServer.binding_port=[{}]", httpPort);
+		if (port < 1024) {
+			E_LOG("[boot::Error] httpServer.binding_port=[{}]", port);
 			exit(-1);
 		}
 
@@ -63,10 +63,10 @@ int main(int argc, char* argv[]) {
 			throw std::logic_error("Init Media Control Unit failed");
 		}
 		
-		std::unique_ptr<HttpProcessUnit> hpu = std::make_unique<HttpProcessUnit>(httpIp, httpPort);
-		
-		hpu->open();
-		hpu.reset();
+		std::unique_ptr<SipProcessUnit> spu = std::make_unique<SipProcessUnit>(ip, port);
+		spu->open();
+		spu->shutdown();
+		spu.reset();
 		if (!MediaControlUnit::own()) {
 			throw std::runtime_error("get error: JobManager is not own!");
 		}

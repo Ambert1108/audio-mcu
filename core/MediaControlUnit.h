@@ -7,7 +7,7 @@
 #pragma once
 
 #include "Config.h"
-#include "HttpProcesser.hpp"
+#include "SipProcesser.hpp"
 #include "MediaProcessUnit.h"
 
 #include "utils/InvokeTimer.hpp"
@@ -49,7 +49,7 @@ namespace aom {
 				failNum += 2;
 				if (failNum > portRange) {
 					E_LOG("PortTool::applyPort::Error: apply available {} port failed", portTypeName);
-					return APPLY_UDP_PORT_ERROR;
+					return -1;
 				}
 			}
 
@@ -162,14 +162,14 @@ namespace aom {
 		static bool own() { return refCount_ == 1; }
 		uint64_t autoCloseCount() const { return autoCloseNum.load(); }
 
-		HandleError createMpu(const CreateJobContext& context);
-		HandleError endMpu(const std::string& id);
-		HandleError addChnl(const AddChnlContext& context, ListenAddr& addr);
-		HandleError removeChnl(const RemoveChnlContext& context);
-		HandleError openMic(const MicCtrlContext& context);
-		HandleError closeMic(const MicCtrlContext& context);
+		bool createMpu(const CreateJobContext& context);
+		bool endMpu(const std::string& id);
+		bool addChnl(const AddChnlContext& context, ListenAddr& addr);
+		bool removeChnl(const RemoveChnlContext& context);
+		bool openMic(const MicCtrlContext& context);
+		bool closeMic(const MicCtrlContext& context);
 
-		HandleError getMpuIdList(mpuIdList& list);
+		bool getMpuIdList(mpuIdList& list);
 	};
 
 }

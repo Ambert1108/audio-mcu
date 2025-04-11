@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(faust VERSION 0.0.5)
+project(faust VERSION 0.1.0)
 
 set(PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/inc)
 list(APPEND PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/core)
@@ -18,8 +18,6 @@ endif (MSVC)
 find_package(Threads REQUIRED)
 
 set(Machine super8 CACHE STRING "machine type")
-option(USE_X_MIX "use X team mix tool" OFF)
-message("Machine is ${Machine}, use xteam mix tool is ${USE_X_MIX}")
 
 if(UNIX)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
@@ -94,11 +92,7 @@ list(APPEND PROJECT_LIBS ${PJSIP_LIBS})
 message(STATUS "pjsip include: ${PJSIP_INCLUDE}")
 message(STATUS "pjsip lib: ${PJSIP_LIBS}")
 
-if(USE_X_MIX)
-	include(${PROJECT_SOURCE_DIR}/inc/audioMix/audioMixlink.cmake)
-else()
-	include(${PROJECT_SOURCE_DIR}/inc/remix/remixlink.cmake)
-endif()
+include(${PROJECT_SOURCE_DIR}/inc/remix/remixlink.cmake)
 
 
 add_subdirectory(src)

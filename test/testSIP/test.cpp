@@ -14,7 +14,7 @@ volatile std::sig_atomic_t isRunning = 1;
 // 配置常量
 const std::string SERVER_IP = "10.1.63.110";
 const int SERVER_PORT = 5060;
-const int SIP_PORT = 61674;
+const int SIP_PORT = 54321;
 const std::string USERNAME = "faust";
 const std::string PASSWORD = "123456";
 const std::string TARGET_NUMBER = "zzx_call"; // 新增被叫号码常量
@@ -121,76 +121,163 @@ private:
   Call* call = nullptr;
 };
 
-void signalHandler(int signum) {
-  std::cout << "收到信号 (" << signum << ")，正在关闭..." << std::endl;
-  isRunning = 0;
-}
+class SipProcessUnit {
+public:
+  SipProcessUnit(std::string targetIp, uint16_t targetPort)
+    : ip(targetIp), port(targetPort) {
+  }
+  ~SipProcessUnit() {
+    if (mcuAccount) mcuAccount->shutdown();
+    for (auto& each : acList) {
+      each->shutdown();
+    }
+    ep.libDestroy();
+  }
 
-int main() {
-  signal(SIGINT, signalHandler);
-  signal(SIGTERM, signalHandler);
-
-  Endpoint ep;
-  try {
+  void open() {
     ep.libCreate();
-    EpConfig ep_cfg;
-    ep_cfg.logConfig.level = 4;
-    ep.libInit(ep_cfg);
+    epCfg.logConfig.level = 4;
+    ep.libInit(epCfg);
 
     pj_status_t status = pjsua_set_null_snd_dev();
     if (status != PJ_SUCCESS) {
-      std::cerr << "禁用音频设备失败: " << status << std::endl;
+      I_LOG("close audio dev failed:{}", status);
       ep.libDestroy();
-      return 1;
+      return;
     }
 
-    TransportConfig tcfg;
-    tcfg.port = SIP_PORT;
+    tcfg.port = sipPort;
     ep.transportCreate(PJSIP_TRANSPORT_UDP, tcfg);
     I_LOG("UDP transport create success, port is {}", tcfg.port);
 
     ep.libStart();
     I_LOG("start PJSUA2 module");
 
-    AccountConfig acfg;
-    acfg.idUri = "sip:" + USERNAME + "@" + SERVER_IP + ":" + std::to_string(SERVER_PORT);
-    acfg.regConfig.registrarUri = "sip:" + SERVER_IP + ":" + std::to_string(SERVER_PORT);
-    AuthCredInfo cred("digest", "*", USERNAME, 0, PASSWORD);
-    acfg.sipConfig.authCreds.push_back(cred);
+    mcuAcCfg.idUri = "sip:" + user + "@" + ip + ":" + std::to_string(port);
+    mcuAcCfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
+    mcuAcCfg.callConfig.timerMinSESec = 90;
+    mcuAcCfg.callConfig.timerMinSESec = 1800;
+    mcuCred = AuthCredInfo("digest", "*", user, 0, pwd);
+    mcuAcCfg.sipConfig.authCreds.push_back(mcuCred);
+    mcuAccount = std::make_unique<MyAccount>();
+    mcuAccount->create(mcuAcCfg);
+    I_LOG("Sip Process Unit Register uri sip:{}@{}:{}", user, ip, port);
+    isRunning = true;
+    run();
+  }
 
-    MyAccount acc;
-    acc.create(acfg);
+private:
+  std::string ip;
+  uint16_t port;
+  uint16_t sipPort = SIP_PORT;
+  std::string user = USERNAME;
+  std::string pwd = PASSWORD;
 
+  pj::Endpoint ep;
+  pj::EpConfig epCfg;
+  pj::TransportConfig tcfg;
+
+  AccountConfig mcuAcCfg;
+  AuthCredInfo mcuCred;
+  std::unique_ptr<MyAccount> mcuAccount;
+  std::vector<std::unique_ptr<MyAccount>> acList{};
+  bool isRunning{ false };
+
+  void run() {
+    I_LOG("Sip Process Unit Start listen");
     while (isRunning) {
-      char option[10];
-
-      puts("Press 'h' to hangup all calls, 'q' to quit");
-      if (fgets(option, sizeof(option), stdin) == NULL) {
-        puts("EOF while reading stdin, will quit now..");
-        break;
-      }
-      if (option[0] == 'c')
-        acc.makeCall("sip:" + TARGET_NUMBER + "@" + SERVER_IP + ":" + std::to_string(SERVER_PORT));
-
-      if (option[0] == 'a')
-        acc.answerCall();
-
-      if (option[0] == 'q')
-        break;
-
-      if (option[0] == 'h')
-        pjsua_call_hangup_all();
       ep.libHandleEvents(100);
     }
+    E_LOG("Sip Process Unit listen Failed");
+  }
+  void registerAccount(std::string userName) {
+    AccountConfig acfg;
+    acfg.idUri = "sip:" + userName + "@" + ip + ":" + std::to_string(port);
+    acfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
+    AuthCredInfo cred("digest", "*", userName, 0, pwd);
+    acfg.sipConfig.authCreds.push_back(cred);
+    std::unique_ptr<MyAccount> acc = std::make_unique<MyAccount>();
+    acc->create(acfg);
+    acList.emplace_back(std::move(acc));
+  }
+};
 
-    I_LOG("Clean up resource");
-    acc.shutdown();
-    ep.libDestroy();
-  }
-  catch (Error& err) {
-    E_LOG("Catch exception:{}", err.info());
-    ep.libDestroy();
-    return 1;
-  }
+int main() {
+  //1.
+ std::unique_ptr<SipProcessUnit> spu = std::make_unique<SipProcessUnit>(SERVER_IP, SERVER_PORT);
+ spu->open();
+
+  //2.
+  //Endpoint ep;
+  //try {
+  //  ep.libCreate();
+  //  EpConfig ep_cfg;
+  //  ep_cfg.logConfig.level = 4;
+  //  ep.libInit(ep_cfg);
+  //
+  //  pj_status_t status = pjsua_set_null_snd_dev();
+  //  if (status != PJ_SUCCESS) {
+  //    std::cerr << "禁用音频设备失败: " << status << std::endl;
+  //    ep.libDestroy();
+  //    return 1;
+  //  }
+  //
+  //  TransportConfig tcfg;
+  //  tcfg.port = SIP_PORT;
+  //  ep.transportCreate(PJSIP_TRANSPORT_UDP, tcfg);
+  //  I_LOG("UDP transport create success, port is {}", tcfg.port);
+  //
+  //  ep.libStart();
+  //  I_LOG("start PJSUA2 module");
+  //
+  //  AccountConfig acfg;
+  //  acfg.idUri = "sip:" + USERNAME + "@" + SERVER_IP + ":" + std::to_string(SERVER_PORT);
+  //  acfg.regConfig.registrarUri = "sip:" + SERVER_IP + ":" + std::to_string(SERVER_PORT);
+  //  AuthCredInfo cred("digest", "*", USERNAME, 0, PASSWORD);
+  //  acfg.sipConfig.authCreds.push_back(cred);
+  //
+  //  MyAccount acc;
+  //  acc.create(acfg);
+  //
+  //  AccountConfig acfg2;
+  //  acfg2.idUri = "sip:hello@" + SERVER_IP + ":" + std::to_string(SERVER_PORT);
+  //  acfg2.regConfig.registrarUri = "sip:" + SERVER_IP + ":" + std::to_string(SERVER_PORT);
+  //  AuthCredInfo cred2("digest", "*", "hello", 0, PASSWORD);
+  //  acfg2.sipConfig.authCreds.push_back(cred2);
+  //
+  //  MyAccount acc2;
+  //  acc2.create(acfg2);
+  //
+  //  while (isRunning) {
+  //    char option[10];
+  //
+  //    puts("Press 'h' to hangup all calls, 'q' to quit");
+  //    if (fgets(option, sizeof(option), stdin) == NULL) {
+  //      puts("EOF while reading stdin, will quit now..");
+  //      break;
+  //    }
+  //    if (option[0] == 'c')
+  //      acc.makeCall("sip:" + TARGET_NUMBER + "@" + SERVER_IP + ":" + std::to_string(SERVER_PORT));
+  //
+  //    if (option[0] == 'a')
+  //      acc.answerCall();
+  //
+  //    if (option[0] == 'q')
+  //      break;
+  //
+  //    if (option[0] == 'h')
+  //      pjsua_call_hangup_all();
+  //    ep.libHandleEvents(100);
+  //  }
+  //
+  //  I_LOG("Clean up resource");
+  //  acc.shutdown();
+  //  ep.libDestroy();
+  //}
+  //catch (Error& err) {
+  //  E_LOG("Catch exception:{}", err.info());
+  //  ep.libDestroy();
+  //  return 1;
+  //}
   return 0;
 }

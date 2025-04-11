@@ -191,26 +191,32 @@ namespace aom {
 	bool AudioPorcessChnl::micOpen() const { return micType != 0 ? true : false; }
 
 	void AudioPorcessChnl::workingLoop() {
-		try {
+		//try {
 			//设置视频RTP接收器，让接收器绑定收流地址并设置发流地址
+		I_LOG("listen addr is {}:{}, dst addr is {}:{}", listenPoint.ip, listenPoint.port, dstPoint.ip, dstPoint.port);
 			switcher = std::make_unique<RtpTransceiver>(chnlId, 32);
+			I_LOG("1");
 			if (switcher->open(listenPoint.ip, listenPoint.port) != 0) {
 				E_LOG("[apc::workingLoop->{}:{}] rtpTrs bind video recv ip={}, port={} failed.",
 					jobId, chnlId, listenPoint.ip, listenPoint.port);
 				status << TaskStatusType::exce;
 				return;
 			}
+			I_LOG("2");
 			switcher->setDestination(dstPoint.ip, dstPoint.port);
+			I_LOG("3");
 
 			//设置视频RTP接收唤醒器
 			notifier = std::make_shared<Notifier>();
+			I_LOG("4");
 			switcher->setRtpNotifier(notifier);
-		}
-		catch (std::exception& ex) {
-			E_LOG("[apc::workingLoop->{}:{}] get exception: {}", jobId, chnlId, ex.what());
-			status << TaskStatusType::exce;
-			return;
-		}
+			I_LOG("5");
+		//}
+		//catch (std::exception& ex) {
+		//	E_LOG("[apc::workingLoop->{}:{}] get exception: {}", jobId, chnlId, ex.what());
+		//	status << TaskStatusType::exce;
+		//	return;
+		//}
 		// 接收数据封装数据包
 		RawData payloadBuf = {};
 		// 接收RTP队列
