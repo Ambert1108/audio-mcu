@@ -242,12 +242,12 @@ namespace aom {
 			while (status) {
 				timePoint = seeker::time::currentTime();
 				while (APCs.empty() && status) {
-					if (waitChnlTime / 1000 >= noChnlTime) {
-						status << TaskStatusType::exce;
-						data.closeMethod = "noChnlAutoClose";
-						autoCloseCallback(ctx->jobId);
-					}
-					waitChnlTime = seeker::time::currentTime() - timePoint;
+					//if (waitChnlTime / 1000 >= noChnlTime) {
+					//	status << TaskStatusType::exce;
+					//	data.closeMethod = "noChnlAutoClose";
+					//	autoCloseCallback(ctx->jobId);
+					//}
+					//waitChnlTime = seeker::time::currentTime() - timePoint;
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
 				std::vector<std::pair<std::string, float>> chnlList; //通道分贝排序列表
