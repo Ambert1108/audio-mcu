@@ -41,7 +41,7 @@ namespace aom {
 
     ~SipCall();
 
-    void registerSipAccount(std::shared_ptr<SipAccount> val);
+    void registerSipAccount(SipAccount* val);
 
     void setId(const std::string& id);
 
@@ -54,7 +54,7 @@ namespace aom {
     void onCallSdpCreated(pj::OnCallSdpCreatedParam& prm) override;
 
   private:
-    std::weak_ptr<SipAccount> account;
+    SipAccount* account = nullptr;
     pj_caching_pool cp;
     pj_pool_t* pool = nullptr;
     port_t listenPort = -1;
@@ -68,14 +68,20 @@ namespace aom {
     int sampleRate = 0;
   };
 
+  typedef std::function<void(std::string userName)> RemoveCallList;
+
   // 自定义Account类
-  class SipAccount : public Account, public std::enable_shared_from_this<SipAccount> {
+  class SipAccount : public Account {
   public:
     SipAccount();
 
     ~SipAccount();
 
     bool closeChannel(const std::string& msg);
+
+    void setRemoveCallListCallback(RemoveCallList func);
+
+    void setUnregistering(bool val);
 
     virtual void onRegState(OnRegStateParam& prm) override;
 
@@ -86,6 +92,8 @@ namespace aom {
     std::map<std::string, std::unique_ptr<SipCall>> callList{};
     MediaControlUnit* mcu = nullptr;
     std::string jobId{};
+    RemoveCallList callback = nullptr;
+    bool isUnregistering = false;
 
     std::string extractChnlId(const std::string& wholeMsg);
 
@@ -94,6 +102,7 @@ namespace aom {
     void parseSDP(const std::string& wholeMsg, SDPInfo& info);
   };
 
+  using RemoveCallFunc = RemoveCallList;
   class SipProcessUnit : public SipAccount {
   public:
     SipProcessUnit(std::string targetIp, port_t targetPort);
@@ -114,14 +123,16 @@ namespace aom {
 
     AccountConfig mcuAcCfg;
     AuthCredInfo mcuCred;
-    std::map<std::string, std::shared_ptr<SipAccount>> acList{};
+    std::map<std::string, std::unique_ptr<SipAccount>> acList{};
     MediaControlUnit* mcu = nullptr;
     Message msg;
+    RemoveCallFunc fn = nullptr;
     bool isRunning { false };
 
     void run();
     void registerAccount(std::string userName);
     void unregisterAccount(std::string userName);
+    void removeCallFromList(std::string userName);
 
     void onRegState(OnRegStateParam& prm) override;
     void onInstantMessage(OnInstantMessageParam& prm) override;

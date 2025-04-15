@@ -13,9 +13,10 @@ namespace aom {
     if (pool) {
       pj_pool_release(pool);
     }
+    account = nullptr;
   }
 
-  void SipCall::registerSipAccount(std::shared_ptr<SipAccount> val) { account = val; }
+  void SipCall::registerSipAccount(SipAccount* val) { account = val; }
 
   void SipCall::setId(const std::string& id) { chnlId = id; }
 
@@ -29,8 +30,8 @@ namespace aom {
 
     if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
       SipRxData rdata = prm.e.body.tsxState.src.rdata;
-      if (auto acc = account.lock()) {
-        acc->closeChannel(rdata.wholeMsg);
+      if (account) {
+        account->closeChannel(rdata.wholeMsg);
       }
       else {
         E_LOG("[SC:{}] SipAccount already destory, can't use closeChannel", chnlId);
@@ -75,6 +76,7 @@ namespace aom {
   }
 
   SipAccount::~SipAccount() {
+    this->shutdown();
     if (mcu) {
       MediaControlUnit::giveInstance(mcu);
     }
@@ -108,13 +110,32 @@ namespace aom {
     return true;
   }
 
+  void SipAccount::setRemoveCallListCallback(RemoveCallList func) {
+    callback = func;
+  }
+
+  void SipAccount::setUnregistering(bool val) {
+    isUnregistering = val;
+  }
+
   void SipAccount::onRegState(OnRegStateParam& prm) {
     AccountInfo ai = getInfo();
     if (ai.regIsActive) {
-      I_LOG("register {} success, code={}, reason={}", ai.uri, prm.code, prm.reason);
+      jobId = extractJobId("To: " + ai.uri);
+      I_LOG("[SA:{}] register {} success, code={}, reason={}", jobId, ai.uri, prm.code, prm.reason);
     }
     else {
-      E_LOG("register {{} failed, code={}, reason={}", ai.uri, prm.code, prm.reason);
+      if (isUnregistering) {
+        if (prm.code >= 200 && prm.code < 300) {
+          I_LOG("[SA:{}] receive unregister {}, reason={}", jobId, ai.uri, prm.reason);
+          isUnregistering = false;
+          callback(jobId);
+        }
+        else {
+          I_LOG("[SA:{}] unregister {} failed, reason={}", jobId, ai.uri, prm.reason);
+        }
+      }
+      else E_LOG("[SA:{}] register {} failed, code={}, reason={}", jobId, ai.uri, prm.code, prm.reason);
     }
   }
 
@@ -127,12 +148,12 @@ namespace aom {
     std::regex pattern("audio(\\d{6})");
     std::smatch match;
     if (std::regex_match(jobId, match, pattern)) {
-      this->jobId = match[1];
+      jobId = match[1];
     }
     std::string chnlId = extractChnlId(msg);
-    I_LOG("[SA] get jobId {} and chnlId {}", this->jobId, chnlId);
+    I_LOG("[SA] get jobId {} and chnlId {}", jobId, chnlId);
     auto call = std::make_unique<SipCall>(*this, iprm.callId);
-    call->registerSipAccount(shared_from_this());
+    call->registerSipAccount(this);
     CallInfo ci = call->getInfo();
 
     CallOpParam answer_prm;
@@ -147,10 +168,10 @@ namespace aom {
     SDPInfo info;
     parseSDP(msg, info);
     I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}",
-      this->jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate);
+      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate);
     AddChnlContext addCtx;
     ListenAddr addr;
-    addCtx.jobId = this->jobId;
+    addCtx.jobId = jobId;
     addCtx.chnlId = chnlId;
     addCtx.codecType = 1;
     addCtx.dstIp = info.ip;
@@ -164,12 +185,12 @@ namespace aom {
     addCtx.inSampleRate = 8000;
     addCtx.outSampleRate = 8000;
     if (!mcu->addChnl(addCtx, addr)) {
-      E_LOG("[SA:{}->{}] add channel faild", this->jobId, chnlId);
+      E_LOG("[SA:{}->{}] add channel faild", jobId, chnlId);
       answer_prm.statusCode = PJSIP_SC_BAD_REQUEST;
       call->answer(answer_prm);
     }
     MicCtrlContext ctx;
-    ctx.jobId = this->jobId;
+    ctx.jobId = jobId;
     ctx.channelId = chnlId;
     mcu->openMic(ctx);
     call->setPort(addr.port);
@@ -208,10 +229,10 @@ namespace aom {
   }
 
   std::string SipAccount::extractJobId(const std::string& wholeMsg) {
-    // 查找 "From:" 行
+    // 查找 "To:" 行
     size_t fromPos = wholeMsg.find("To:");
     if (fromPos == std::string::npos) {
-      return "";  // 没有找到 From 头
+      return "";  // 没有找到 To 头
     }
 
     // 查找 "sip:" 或 "SIP:"
@@ -311,19 +332,20 @@ namespace aom {
   }
 
   SipProcessUnit::SipProcessUnit(std::string targetIp, port_t targetPort)
-  : ip(targetIp), port(targetPort) {}
+  : ip(targetIp), port(targetPort) {
+    fn = std::bind(&SipProcessUnit::removeCallFromList, this, std::placeholders::_1);
+  }
 
   SipProcessUnit::~SipProcessUnit() {
+    this->shutdown();
     MediaControlUnit::giveInstance(mcu);
-    for (auto& [key, val] : acList) {
-      val->shutdown();
-    }
+    acList.clear();
     ep.libDestroy();
   }
 
   void SipProcessUnit::open() {
     ep.libCreate();
-    epCfg.logConfig.level = 2;
+    epCfg.logConfig.level = 4;
     //epCfg.logConfig.writer = &logger;
     ep.libInit(epCfg);
 
@@ -357,7 +379,6 @@ namespace aom {
 
     while (isRunning) {
       ep.libHandleEvents(100);
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     E_LOG("Sip Process Unit listen Failed");
@@ -369,9 +390,11 @@ namespace aom {
     acfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
     AuthCredInfo cred("digest", "*", userName, 0, pwd);
     acfg.sipConfig.authCreds.push_back(cred);
-    std::shared_ptr<SipAccount> acc = std::make_shared<SipAccount>();
+    std::unique_ptr<SipAccount> acc = std::make_unique<SipAccount>();
     acc->create(acfg);
-    acList.emplace(userName, acc);
+    acc->setRemoveCallListCallback(fn);
+    acList.emplace(userName, std::move(acc));
+    I_LOG("[SPU] register {} success", userName);
   }
 
   void SipProcessUnit::unregisterAccount(std::string userName) {
@@ -381,8 +404,20 @@ namespace aom {
       E_LOG("[SPU] find {} from account list failed", id);
       return;
     }
-    it->second->shutdown();
-    it->second.reset();
+    it->second->setRegistration(false);
+    it->second->setUnregistering(true);
+    I_LOG("[SPU] unregister {} start", userName);
+  }
+
+  void SipProcessUnit::removeCallFromList(std::string userName) {
+    std::string id = "audio" + userName.substr(5);
+    auto it = acList.find(id);
+    if (it == acList.end()) {
+      E_LOG("[SPU] find {} from account list failed", id);
+      return;
+    }
+    acList.erase(id);
+    W_LOG("[SPU] unregister {} success", userName);
   }
   
   void SipProcessUnit::onRegState(OnRegStateParam& prm) {

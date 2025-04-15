@@ -72,12 +72,13 @@ public:
 class MyAccount : public Account {
 public:
   virtual void onRegState(OnRegStateParam& prm) override {
+    E_LOG("on Regstate");
     AccountInfo ai = getInfo();
     if (ai.regIsActive) {
       I_LOG("register {} success, code={}, reason={}", ai.uri, prm.code, prm.reason);
     }
     else {
-      E_LOG("register {{} failed, code={}, reason={}", ai.uri, prm.code, prm.reason);
+      E_LOG("register {} failed, code={}, reason={}", ai.uri, prm.code, prm.reason);
     }
   }
 
@@ -162,31 +163,40 @@ int main() {
 
     MyAccount acc;
     acc.create(acfg);
-
+    bool isShutdown = true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     while (isRunning) {
-      char option[10];
-
-      puts("Press 'h' to hangup all calls, 'q' to quit");
-      if (fgets(option, sizeof(option), stdin) == NULL) {
-        puts("EOF while reading stdin, will quit now..");
-        break;
+      //char option[10];
+      //
+      //puts("Press 'h' to hangup all calls, 'q' to quit");
+      //if (fgets(option, sizeof(option), stdin) == NULL) {
+      //  puts("EOF while reading stdin, will quit now..");
+      //  break;
+      //}
+      //if (option[0] == 'c')
+      //  acc.makeCall("sip:" + TARGET_NUMBER + "@" + SERVER_IP + ":" + std::to_string(SERVER_PORT));
+      //
+      //if (option[0] == 'a')
+      //  acc.answerCall();
+      //
+      //if (option[0] == 'q')
+      //  break;
+      //
+      //if (option[0] == 'h')
+      //  pjsua_call_hangup_all();
+      //
+      //if(option[0] == 'r')
+      if (isShutdown) {
+        W_LOG("++++ start shutdown ++++");
+        acc.setRegistration(false);
+        isShutdown = false;
       }
-      if (option[0] == 'c')
-        acc.makeCall("sip:" + TARGET_NUMBER + "@" + SERVER_IP + ":" + std::to_string(SERVER_PORT));
-
-      if (option[0] == 'a')
-        acc.answerCall();
-
-      if (option[0] == 'q')
-        break;
-
-      if (option[0] == 'h')
-        pjsua_call_hangup_all();
-      ep.libHandleEvents(100);
+      
+      ep.libHandleEvents(10);
     }
 
     I_LOG("Clean up resource");
-    acc.shutdown();
+    //acc.shutdown();
     ep.libDestroy();
   }
   catch (Error& err) {
