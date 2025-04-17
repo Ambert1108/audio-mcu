@@ -52,14 +52,14 @@ namespace aom {
     // 重新组合为完整 SDP 字符串
     std::string newSdp =
       "v=0\r\n"
-      "o=- 3953192465 3953192466 IN IP4 10.1.69.7\r\n"
+      "o=- 3953192465 3953192466 IN IP4 "+ listenIp +"\r\n"
       "s=pjmedia\r\n"
-      "c=IN IP4 10.1.69.7\r\n"
+      "c=IN IP4 " + listenIp + "\r\n"
       "b=AS:84\r\n"
       "t=0 0\r\n"
       "a=X-nat:0\r\n"
       "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
-      "a=rtcp:4001 IN IP4 10.1.69.7\r\n"
+      "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
       "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
       "a=rtpmap:8 PCMA/8000\r\n"
       "a=rtpmap:121 telephone-event/8000\r\n"

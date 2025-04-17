@@ -57,6 +57,7 @@ namespace aom {
     SipAccount* account = nullptr;
     pj_caching_pool cp;
     pj_pool_t* pool = nullptr;
+    const std::string listenIp = seeker::IniConfig::Get("media", "nat_ip", "0.0.0.0");
     port_t listenPort = -1;
     std::string chnlId{};
   };
