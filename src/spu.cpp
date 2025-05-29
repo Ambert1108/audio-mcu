@@ -65,7 +65,9 @@ namespace aom {
       "a=fmtp:8 0-16\r\n"
       "a=rtpmap:121 telephone-event/8000\r\n"
       "a=fmtp:121 0-16\r\n"
-      "a=a=rtcp-fb:* ccm tmmbr\r\n";
+      "a=a=rtcp-fb:* ccm tmmbr\r\n"
+      "m=video 0 RTP/AVP 96\r\n"
+      "c=IN IP4 47.93.119.6";
 
     prm.sdp.wholeSdp = newSdp;
 
@@ -346,6 +348,8 @@ namespace aom {
 
   void SipProcessUnit::open() {
     ep.libCreate();
+    pj::EpConfig epCfg;
+    epCfg.uaConfig.maxCalls = 16;
     epCfg.logConfig.level = 4;
     //epCfg.logConfig.writer = &logger;
     ep.libInit(epCfg);
