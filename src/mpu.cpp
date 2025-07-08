@@ -173,6 +173,16 @@ namespace aom {
 		it->second->setMicType(0);
 	}
 
+	void MediaProcessUnit::updateDest(const std::string& id, const std::string& ip, port_t port) {
+		uniqueLock lck(apcLocker);
+		auto it = APCs.find(id);
+		if (it == APCs.end()) {
+			E_LOG("[mpu::updateDest->{}] update channel[{}] destition address failed, id not found", ctx->jobId, id);
+			return;
+		}
+		it->second->updateDestition(ip, port);
+	}
+
 	void MediaProcessUnit::stop() {
 		//若MPU已经关闭，则不再重复操作
 		if (status.getStatus() == TaskStatusType::end) return;

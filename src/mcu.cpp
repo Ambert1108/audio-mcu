@@ -83,6 +83,19 @@ namespace aom {
 		if(audioPortTool) audioPortTool->freePort(val);
 	}
 
+	bool MediaControlUnit::checkJob(const std::string& id) {
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			it = mpus.find(id);
+		}
+
+		//mpu不存在，业务处理失败
+		if (it == mpus.end()) return false;
+
+		return true;
+	}
+
 	bool MediaControlUnit::createMpu(const CreateJobContext& context) {
 		mpuForm::iterator it;
 		{
@@ -226,6 +239,24 @@ namespace aom {
 
 		//更新mpu
 		it->second->reportMediaInfo(std::make_unique<CloseMicEvent>(context));
+		return true;
+	}
+
+	bool MediaControlUnit::updateDestition(const UpdateContext& context) {
+		//判断jobId是否存在
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			it = mpus.find(context.jobId);
+
+		}
+
+		//mpu不存在，业务处理失败
+		if (it == mpus.end()) return false;
+
+		//更新mpu
+		it->second->reportMediaInfo(std::make_unique<UpdateDestEvent>(context));
+
 		return true;
 	}
 

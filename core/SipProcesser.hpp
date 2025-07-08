@@ -53,6 +53,15 @@ namespace aom {
     std::string channelId = "unknown";
   };
 
+  struct UpdateContext {
+    std::string jobId = "unknown";
+    std::string channelId = "unknown"; 
+    std::string dstIp;
+    port_t dstPort;
+  };
+
+  //struct 
+
   struct CallbackRequest {
     std::string channelId;
   };

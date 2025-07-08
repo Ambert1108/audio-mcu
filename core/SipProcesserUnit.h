@@ -80,6 +80,8 @@ namespace aom {
 
     bool closeChannel(const std::string& msg);
 
+    bool updateChannelDestition(const std::string& msg);
+
     void setRemoveCallListCallback(RemoveCallList func);
 
     void setUnregistering(bool val);

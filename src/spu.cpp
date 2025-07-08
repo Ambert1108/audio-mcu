@@ -37,6 +37,12 @@ namespace aom {
         E_LOG("[SC:{}] SipAccount already destory, can't use closeChannel", chnlId);
       }
     }
+    if (ci.lastStatusCode == PJSIP_SC_REQUEST_UPDATED) {
+      I_LOG("[SC:{}] Receive UPDATE request, start process", chnlId);
+      std::string msg = prm.e.body.tsxState.src.rdata.wholeMsg;
+      account->updateChannelDestition(msg);
+    }
+    W_LOG("[DEBUG] Request:{}", prm.e.body.tsxState.src.rdata.info);
   }
 
   void SipCall::onCallTsxState(OnCallTsxStateParam& prm) {
@@ -113,6 +119,10 @@ namespace aom {
     return true;
   }
 
+  bool SipAccount::updateChannelDestition(const std::string& msg) {
+    return true;
+  }
+
   void SipAccount::setRemoveCallListCallback(RemoveCallList func) {
     callback = func;
   }
@@ -153,6 +163,12 @@ namespace aom {
     if (std::regex_match(jobId, match, pattern)) {
       jobId = match[1];
     }
+
+    if (!mcu->checkJob(jobId)) {
+      E_LOG("[SA] jobId {} not found", jobId);
+      return;
+    }
+
     std::string chnlId = extractChnlId(msg);
     I_LOG("[SA] get jobId {} and chnlId {}", jobId, chnlId);
     auto call = std::make_unique<SipCall>(*this, iprm.callId);

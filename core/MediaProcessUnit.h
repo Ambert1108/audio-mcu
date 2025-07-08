@@ -72,6 +72,7 @@ namespace aom {
 		void removeChannel(const std::string& id);
 		void openChnlMic(const std::string&);
 		void closeChnlMic(const std::string&);
+		void updateDest(const std::string& id, const std::string& ip, port_t port);
 	private:
 		std::thread workTh{};
 		std::thread eventTh{};
@@ -176,5 +177,18 @@ namespace aom {
 		};
 
 		MicCtrlContext context;
+	};
+
+	class UpdateDestEvent : public Event {
+	public:
+		UpdateDestEvent(const UpdateContext& c) : Event(JobHandleType::close), context(std::move(c)) {};
+
+		void handle(void* ptr) override {
+			MediaProcessUnit* master = nullptr;
+			if (ptr != nullptr) master = (MediaProcessUnit*)ptr;
+			master->updateDest(context.channelId, context.dstIp, context.dstPort);
+		};
+
+		UpdateContext context;
 	};
 }

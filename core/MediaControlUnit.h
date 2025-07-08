@@ -162,12 +162,14 @@ namespace aom {
 		static bool own() { return refCount_ == 1; }
 		uint64_t autoCloseCount() const { return autoCloseNum.load(); }
 
+		bool checkJob(const std::string& id);
 		bool createMpu(const CreateJobContext& context);
 		bool endMpu(const std::string& id);
 		bool addChnl(const AddChnlContext& context, ListenAddr& addr);
 		bool removeChnl(const RemoveChnlContext& context);
 		bool openMic(const MicCtrlContext& context);
 		bool closeMic(const MicCtrlContext& context);
+		bool updateDestition(const UpdateContext& context);
 
 		bool getMpuIdList(mpuIdList& list);
 	};

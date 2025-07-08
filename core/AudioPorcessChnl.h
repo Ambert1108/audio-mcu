@@ -94,6 +94,7 @@ namespace aom {
 		size_t getLength() const;
 		void getBuffer(std::vector<int16_t>& dst, size_t length);
 		void setMicType(int val);
+		void updateDestition(const std::string& ip, port_t port);
 		TaskStatusType getStatus() const;
 		int16_t getPort() const;
 		void sendRtp(uint8_t* pcmData, int nb_samples, uint32_t ts);
@@ -103,6 +104,7 @@ namespace aom {
 		Decoder decoder;
 		Encoder encoder;
 		RtpTrxer switcher;
+		mutable std::mutex switchLocker{};
 		RtpNotifier notifier;
 		AVFrame* frame;
 		AVPacket* pkt;

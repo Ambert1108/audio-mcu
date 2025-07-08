@@ -155,6 +155,11 @@ namespace aom {
 		micOpenNeedClear = true;
 	}
 
+	void AudioPorcessChnl::updateDestition(const std::string& ip, port_t port) {
+		uniqueLock lck(switchLocker);
+		switcher->setDestination(ip, port);
+	}
+
 	TaskStatusType AudioPorcessChnl::getStatus() const { return status.getStatus(); }
 
 	int16_t AudioPorcessChnl::getPort() const { return listenPoint.port; }
@@ -181,6 +186,7 @@ namespace aom {
 		std::vector<uint8_t> payload = std::vector<uint8_t>(pkt->data, pkt->data + pkt->size);
 		seeker::rtp::Rtp rtpPacket = seeker::rtp::Rtp(payloadType, 1, seqNum++, this->ts, ssrc, payload);
 		std::deque<Rtp> sendQueue{ std::move(rtpPacket) };
+		uniqueLock lck(switchLocker);
 		switcher->sendRtp(sendQueue);
 		av_packet_unref(pkt);
 		av_frame_unref(frame);
