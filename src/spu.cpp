@@ -39,41 +39,78 @@ namespace aom {
     }
     if (ci.lastStatusCode == PJSIP_SC_REQUEST_UPDATED) {
       I_LOG("[SC:{}] Receive UPDATE request, start process", chnlId);
-      std::string msg = prm.e.body.tsxState.src.rdata.wholeMsg;
-      account->updateChannelDestition(msg);
+      //std::string msg = prm.e.body.tsxState.src.rdata.wholeMsg;
+      //account->updateChannelDestition(msg);
     }
-    W_LOG("[DEBUG] Request:{}", prm.e.body.tsxState.src.rdata.info);
+    //W_LOG("[DEBUG] Request:{}", prm.e.body.tsxState.src.rdata.info);
   }
 
   void SipCall::onCallTsxState(OnCallTsxStateParam& prm) {
     std::string sendMsg = prm.e.body.tsxState.src.tdata.wholeMsg;
     std::string recvMsg = prm.e.body.tsxState.src.rdata.wholeMsg;
     if(!sendMsg.empty()) I_LOG("Send Msg\n{}", sendMsg);
-    if (!recvMsg.empty()) I_LOG("Recv Msg\n{}", recvMsg);
+    if (!recvMsg.empty()) {
+      I_LOG("Recv Msg\n{}", recvMsg);
+      std::string method = prm.e.body.tsxState.tsx.method;
+      W_LOG("Debug: Recv Method:{}", method);
+      if (method == "UPDATE") {
+        I_LOG("[SC:{}] Receive UPDATE request, start process", chnlId);
+        account->updateChannelDestition(recvMsg);
+      }
+    }
   }
 
   void SipCall::onCallSdpCreated(pj::OnCallSdpCreatedParam& prm) {
     I_LOG("[SC:{}] raw sdp:\n{}", chnlId, prm.sdp.wholeSdp);
 
-    // 重新组合为完整 SDP 字符串
-    std::string newSdp =
-      "v=0\r\n"
-      "o=- 3953192465 3953192466 IN IP4 "+ listenIp +"\r\n"
-      "s=pjmedia\r\n"
-      "c=IN IP4 " + listenIp + "\r\n"
-      "b=AS:84\r\n"
-      "t=0 0\r\n"
-      "a=X-nat:0\r\n"
-      "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
-      "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
-      "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
-      "a=rtpmap:8 PCMA/8000\r\n"
-      "a=fmtp:8 0-16\r\n"
-      "a=rtpmap:121 telephone-event/8000\r\n"
-      "a=fmtp:121 0-16\r\n"
-      "a=a=rtcp-fb:* ccm tmmbr\r\n"
-      "m=video 0 RTP/AVP 96\r\n"
-      "c=IN IP4 47.93.119.6";
+    // 生成sdp
+    std::string newSdp;
+    auto ait = prm.sdp.wholeSdp.find("m=audio");
+    auto vit = prm.sdp.wholeSdp.find("m=video");
+    if (ait != std::string::npos && vit == std::string::npos) {
+       // 存在audio但不存在video
+      newSdp =
+        "v=0\r\n"
+        "o=- 3953192465 3953192466 IN IP4 " + listenIp + "\r\n"
+        "s=pjmedia\r\n"
+        "c=IN IP4 " + listenIp + "\r\n"
+        "b=AS:84\r\n"
+        "t=0 0\r\n"
+        "a=X-nat:0\r\n"
+        "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
+        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
+        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
+        "a=rtpmap:8 PCMA/8000\r\n"
+        "a=fmtp:8 0-16\r\n"
+        "a=rtpmap:121 telephone-event/8000\r\n"
+        "a=fmtp:121 0-16\r\n"
+        "a=a=rtcp-fb:* ccm tmmbr\r\n";
+
+    }
+    else if (ait != std::string::npos && vit != std::string::npos) {
+      // 存在audio和video
+      newSdp =
+        "v=0\r\n"
+        "o=- 3953192465 3953192466 IN IP4 " + listenIp + "\r\n"
+        "s=pjmedia\r\n"
+        "c=IN IP4 " + listenIp + "\r\n"
+        "b=AS:84\r\n"
+        "t=0 0\r\n"
+        "a=X-nat:0\r\n"
+        "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
+        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
+        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
+        "a=rtpmap:8 PCMA/8000\r\n"
+        "a=fmtp:8 0-16\r\n"
+        "a=rtpmap:121 telephone-event/8000\r\n"
+        "a=fmtp:121 0-16\r\n"
+        "a=a=rtcp-fb:* ccm tmmbr\r\n"
+        "m=video 0 RTP/AVP 96\r\n"
+        "c=IN IP4 47.93.119.6";
+        "a=rtpmap:96 H264/90000\r\n"
+        "a=fmtp:96 profile-level-id=42801F\r\n"
+        "a=rtcp-fb:96 nack pli\r\n";
+    }
 
     prm.sdp.wholeSdp = newSdp;
 
@@ -102,6 +139,10 @@ namespace aom {
     }
     std::string chnlId = extractChnlId(msg);
     I_LOG("[SA:{}->{}]start remove channel", jobId, chnlId);
+    RemoveChnlContext ctx(jobId, chnlId);
+    mcu->removeChnl(ctx);
+    W_LOG("[SA:{}->{}] remove step: remove channel finish", jobId, chnlId);
+
     {
       std::lock_guard<std::mutex> lck(listLocker);
       auto it = callList.find(chnlId);
@@ -109,17 +150,36 @@ namespace aom {
         E_LOG("find channel id:{} in call list failed", chnlId);
         return false;
       }
+      //CallOpParam prm;
+      //prm.statusCode = PJSIP_SC_OK;
+      //it->second->answer(prm);
       it->second.reset();
       callList.erase(it);
     }
     I_LOG("[SA:{}->{}] remove step: remove call finish", jobId, chnlId);
-    RemoveChnlContext ctx(jobId, chnlId);
-    mcu->removeChnl(ctx);
-    W_LOG("[SA:{}->{}] remove step: remove channel finish", jobId, chnlId);
+
     return true;
   }
 
   bool SipAccount::updateChannelDestition(const std::string& msg) {
+    std::string jobId = extractJobId(msg);
+
+    std::regex pattern("audio(\\d{6})");
+    std::smatch match;
+    if (std::regex_match(jobId, match, pattern)) {
+      jobId = match[1];
+    }
+    std::string chnlId = extractChnlId(msg);
+    I_LOG("[SA:{}->{}]start update channel destition", jobId, chnlId);
+
+    SDPInfo info;
+    parseSDP(msg, info);
+    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}",
+      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate);
+
+    UpdateContext ctx(jobId, chnlId, info.ip, info.port);
+    mcu->updateDestition(ctx);
+
     return true;
   }
 
@@ -249,15 +309,15 @@ namespace aom {
 
   std::string SipAccount::extractJobId(const std::string& wholeMsg) {
     // 查找 "To:" 行
-    size_t fromPos = wholeMsg.find("To:");
-    if (fromPos == std::string::npos) {
+    size_t toPos = wholeMsg.find("To:");
+    if (toPos == std::string::npos) {
       return "";  // 没有找到 To 头
     }
 
     // 查找 "sip:" 或 "SIP:"
-    size_t sipPos = wholeMsg.find("sip:", fromPos);
+    size_t sipPos = wholeMsg.find("sip:", toPos);
     if (sipPos == std::string::npos) {
-      sipPos = wholeMsg.find("SIP:", fromPos);
+      sipPos = wholeMsg.find("SIP:", toPos);
       if (sipPos == std::string::npos) {
         return "";  // 没有找到 SIP URI
       }

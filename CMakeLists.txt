@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(faust VERSION 0.2.0)
+project(faust VERSION 0.3.0)
 
 set(PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/inc)
 list(APPEND PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/core)

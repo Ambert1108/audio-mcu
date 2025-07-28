@@ -356,7 +356,7 @@ namespace aom {
 							lockGuard lck(srcBufLocker);
 							pcmTotal += srcBuffer.size();
 							if (srcBuffer.size() > (int64_t)sampleRate / 50 * 6) {
-								W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
+								//W_LOG("[apc::workingLoop->{}:{}] buffer size is {}", jobId, chnlId, srcBuffer.size());
 								if (micOpenNeedClear) {
 									srcBuffer.clear();
 									micOpenNeedClear = false;

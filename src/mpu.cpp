@@ -177,7 +177,7 @@ namespace aom {
 		uniqueLock lck(apcLocker);
 		auto it = APCs.find(id);
 		if (it == APCs.end()) {
-			E_LOG("[mpu::updateDest->{}] update channel[{}] destition address failed, id not found", ctx->jobId, id);
+			E_LOG("[mpu::updateDest->{}] update destition address failed, cnlId:{} not found", ctx->jobId, id);
 			return;
 		}
 		it->second->updateDestition(ip, port);

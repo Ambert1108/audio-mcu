@@ -58,6 +58,9 @@ namespace aom {
     std::string channelId = "unknown"; 
     std::string dstIp;
     port_t dstPort;
+    UpdateContext() = default;
+    UpdateContext(std::string jId, std::string cId, std::string ip, port_t port) 
+      : jobId(jId), channelId(cId), dstIp(ip), dstPort(port) {}
   };
 
   //struct 
