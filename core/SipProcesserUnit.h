@@ -67,6 +67,7 @@ namespace aom {
     int port = 0;
     int payloadType = -1;
     int sampleRate = 0;
+    bool isOpus = false;
   };
 
   typedef std::function<void(std::string userName)> RemoveCallList;

@@ -246,23 +246,27 @@ namespace aom {
     //在SDP中取出payloadType、codecType、inSampleRate、outSampleRate、dstIp、dstPort
     SDPInfo info;
     parseSDP(msg, info);
-    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}",
-      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate);
+    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}, opus is {}",
+      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate, info.isOpus);
     AddChnlContext addCtx;
     ListenAddr addr;
     addCtx.jobId = jobId;
     addCtx.chnlId = chnlId;
-    addCtx.codecType = 1;
     addCtx.dstIp = info.ip;
     addCtx.dstPort = info.port;
-    //addCtx.payloadType = info.payloadType;
-    //addCtx.inSampleRate = info.sampleRate;
-    //addCtx.outSampleRate = info.sampleRate;
-
-    //暂时写死为PCMA
-    addCtx.payloadType = 8;
-    addCtx.inSampleRate = 8000;
-    addCtx.outSampleRate = 8000;
+    if (info.isOpus) {
+      addCtx.codecType = 2;
+      addCtx.payloadType = info.payloadType;
+      addCtx.inSampleRate = info.sampleRate;
+      addCtx.outSampleRate = info.sampleRate;
+    }
+    else {
+      //PCMA
+      addCtx.codecType = 1;
+      addCtx.payloadType = 8;
+      addCtx.inSampleRate = 8000;
+      addCtx.outSampleRate = 8000;
+    }
     if (!mcu->addChnl(addCtx, addr)) {
       E_LOG("[SA:{}->{}] add channel faild", jobId, chnlId);
       answer_prm.statusCode = PJSIP_SC_BAD_REQUEST;
@@ -395,6 +399,7 @@ namespace aom {
     while (std::getline(iss, line)) {
       // 解析Opus编码参数（a=rtpmap行）
       if (line.find("a=rtpmap:") != std::string::npos && line.find("opus/") != std::string::npos) {
+        info.isOpus = true;
         size_t colonPos = line.find(':');
         size_t slashPos = line.find('/');
         if (colonPos != std::string::npos && slashPos != std::string::npos) {

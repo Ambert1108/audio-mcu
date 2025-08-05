@@ -181,6 +181,10 @@ namespace aom {
 			E_LOG("[mcu::createMpu][{}] request param: codecType is invalid val {}", context.jobId, context.codecType);
 			return false;
 		}
+		if (it->second->getCodecType() != -1 && it->second->getCodecType() != context.codecType) {
+			E_LOG("[mcu::createMpu][{}] current codec type {} != user codec type {}", ctx->jobId, ctx->codecType, codecType);
+			return false;
+		}
 		context.listenIp = mediaIp;
 		context.listenPort = audioPort;
 		addr.ip = mediaIp;

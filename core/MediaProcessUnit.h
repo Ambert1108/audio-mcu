@@ -67,6 +67,7 @@ namespace aom {
 		TaskStatusType getStatus() const;
 		const MediaProcessData& getData() const;
 		int getChnlNum() const;
+		int getCodecType() const;
 		void addChannel(const std::string& id, const Point& src, const Point& dst, int pt, 
 			int codecType, int inRate, int outRate);
 		void removeChannel(const std::string& id);

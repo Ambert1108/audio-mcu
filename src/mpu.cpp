@@ -109,6 +109,8 @@ namespace aom {
 
 	int MediaProcessUnit::getChnlNum() const { return APCs.size(); }
 
+	int MediaProcessUnit::getCodecType() const { return ctx->codecType; }
+
 	void MediaProcessUnit::addChannel(const std::string& id, const Point& src, const Point& dst, int pt,
 		int codecType, int inRate, int outRate) {
 		{
