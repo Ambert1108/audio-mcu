@@ -75,10 +75,15 @@ namespace aom {
         "c=IN IP4 " + listenIp + "\r\n"
         "b=AS:84\r\n"
         "t=0 0\r\n"
+        "a=X-nat:0\r\n"
         "m=audio " + std::to_string(listenPort) + " RTP/AVP 96\r\n"
+        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
+        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
         "a=rtpmap:96 opus/48000/2\r\n"
-        "a=rtcp-fb:* trr-int 1000\r\n"
-        "a = rtcp - fb:*ccm tmmbr\r\n";
+        "a=fmtp:96 0-16\r\n"
+        "a=rtpmap:121 telephone-event/48000\r\n"
+        "a=fmtp:121 0-16\r\n"
+        "a=a=rtcp-fb:* ccm tmmbr\r\n";
     }
     else {
       newSdp =
@@ -88,9 +93,15 @@ namespace aom {
         "c=IN IP4 " + listenIp + "\r\n"
         "b=AS:84\r\n"
         "t=0 0\r\n"
+        "a=X-nat:0\r\n"
         "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
-        "a=rtcp-fb:* trr-int 1000\r\n"
-        "a = rtcp - fb:*ccm tmmbr\r\n";
+        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
+        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
+        "a=rtpmap:8 PCMA/8000\r\n"
+        "a=fmtp:8 0-16\r\n"
+        "a=rtpmap:121 telephone-event/8000\r\n"
+        "a=fmtp:121 0-16\r\n"
+        "a=a=rtcp-fb:* ccm tmmbr\r\n";
     }
     
     if (ait != std::string::npos && vit != std::string::npos) {
