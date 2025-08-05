@@ -441,7 +441,7 @@ namespace aom {
 			}
 			else if (codecType == 2) {
 				I_LOG("opus decoder open");
-				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
+				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 2);
 			}
 			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}
@@ -466,7 +466,7 @@ namespace aom {
 			}
 			else if (codecType == 2) {
 				I_LOG("opus encoder open");
-				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
+				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 2);
 			}
 			I_LOG("[apc::setEncoder->{}] Encoder opened success.", jobId);
 		}

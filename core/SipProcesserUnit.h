@@ -37,7 +37,7 @@ namespace aom {
 
   class SipCall : public Call {
   public:
-    SipCall(Account& acc, int call_id = PJSUA_INVALID_ID);
+    SipCall(bool opus, Account& acc, int call_id = PJSUA_INVALID_ID);
 
     ~SipCall();
 
@@ -60,6 +60,7 @@ namespace aom {
     const std::string listenIp = seeker::IniConfig::Get("media", "nat_ip", "0.0.0.0");
     port_t listenPort = -1;
     std::string chnlId{};
+    bool isOpus = false;
   };
 
   struct SDPInfo {

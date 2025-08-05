@@ -1,18 +1,18 @@
 #include "SipProcesserUnit.h"
 
 namespace aom {
-  SipCall::SipCall(Account& acc, int call_id) : Call(acc, call_id) {
-    pj_caching_pool_init(&cp, NULL, 0);
-    pool = pj_pool_create(&cp.factory, "answerSdp", 4096, 4096, NULL);
-    if (!pool) {
-      E_LOG("create pool failed");
-    }
+  SipCall::SipCall(bool opus, Account& acc, int call_id) : Call(acc, call_id), isOpus(opus) {
+    //pj_caching_pool_init(&cp, NULL, 0);
+    //pool = pj_pool_create(&cp.factory, "answerSdp", 4096, 4096, NULL);
+    //if (!pool) {
+    //  E_LOG("create pool failed");
+    //}
   }
 
   SipCall::~SipCall() {
-    if (pool) {
-      pj_pool_release(pool);
-    }
+    //if (pool) {
+    //  pj_pool_release(pool);
+    //}
     account = nullptr;
   }
 
@@ -67,8 +67,7 @@ namespace aom {
     std::string newSdp;
     auto ait = prm.sdp.wholeSdp.find("m=audio");
     auto vit = prm.sdp.wholeSdp.find("m=video");
-    if (ait != std::string::npos && vit == std::string::npos) {
-       // 存在audio但不存在video
+    if (isOpus) {
       newSdp =
         "v=0\r\n"
         "o=- 3953192465 3953192466 IN IP4 " + listenIp + "\r\n"
@@ -76,19 +75,12 @@ namespace aom {
         "c=IN IP4 " + listenIp + "\r\n"
         "b=AS:84\r\n"
         "t=0 0\r\n"
-        "a=X-nat:0\r\n"
-        "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
-        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
-        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
-        "a=rtpmap:8 PCMA/8000\r\n"
-        "a=fmtp:8 0-16\r\n"
-        "a=rtpmap:121 telephone-event/8000\r\n"
-        "a=fmtp:121 0-16\r\n"
-        "a=a=rtcp-fb:* ccm tmmbr\r\n";
-
+        "m=audio " + std::to_string(listenPort) + " RTP/AVP 96\r\n"
+        "a=rtpmap:96 opus/48000/2\r\n"
+        "a=rtcp-fb:* trr-int 1000\r\n"
+        "a = rtcp - fb:*ccm tmmbr\r\n";
     }
-    else if (ait != std::string::npos && vit != std::string::npos) {
-      // 存在audio和video
+    else {
       newSdp =
         "v=0\r\n"
         "o=- 3953192465 3953192466 IN IP4 " + listenIp + "\r\n"
@@ -96,15 +88,14 @@ namespace aom {
         "c=IN IP4 " + listenIp + "\r\n"
         "b=AS:84\r\n"
         "t=0 0\r\n"
-        "a=X-nat:0\r\n"
         "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
-        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
-        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
-        "a=rtpmap:8 PCMA/8000\r\n"
-        "a=fmtp:8 0-16\r\n"
-        "a=rtpmap:121 telephone-event/8000\r\n"
-        "a=fmtp:121 0-16\r\n"
-        "a=a=rtcp-fb:* ccm tmmbr\r\n"
+        "a=rtcp-fb:* trr-int 1000\r\n"
+        "a = rtcp - fb:*ccm tmmbr\r\n";
+    }
+    
+    if (ait != std::string::npos && vit != std::string::npos) {
+      // 存在audio和video
+      newSdp +=
         "m=video 0 RTP/AVP 96\r\n"
         "c=IN IP4 47.93.119.6";
         "a=rtpmap:96 H264/90000\r\n"
@@ -231,15 +222,6 @@ namespace aom {
 
     std::string chnlId = extractChnlId(msg);
     I_LOG("[SA] get jobId {} and chnlId {}", jobId, chnlId);
-    auto call = std::make_unique<SipCall>(*this, iprm.callId);
-    call->registerSipAccount(this);
-    CallInfo ci = call->getInfo();
-
-    CallOpParam answer_prm;
-    answer_prm.statusCode = PJSIP_SC_RINGING;
-    call->answer(answer_prm);
-
-
     std::string dstIp;
     int dstPort;
     //取出INVITE中的SDP
@@ -267,6 +249,15 @@ namespace aom {
       addCtx.inSampleRate = 8000;
       addCtx.outSampleRate = 8000;
     }
+
+    auto call = std::make_unique<SipCall>(info.isOpus, *this, iprm.callId);
+    call->registerSipAccount(this);
+    CallInfo ci = call->getInfo();
+
+    CallOpParam answer_prm;
+    answer_prm.statusCode = PJSIP_SC_RINGING;
+    call->answer(answer_prm);
+
     if (!mcu->addChnl(addCtx, addr)) {
       E_LOG("[SA:{}->{}] add channel faild", jobId, chnlId);
       answer_prm.statusCode = PJSIP_SC_BAD_REQUEST;

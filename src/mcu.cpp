@@ -182,7 +182,8 @@ namespace aom {
 			return false;
 		}
 		if (it->second->getCodecType() != -1 && it->second->getCodecType() != context.codecType) {
-			E_LOG("[mcu::createMpu][{}] current codec type {} != user codec type {}", ctx->jobId, ctx->codecType, codecType);
+			E_LOG("[mcu::createMpu][{}] current codec type {} != user codec type {}", 
+				context.jobId, it->second->getCodecType(), context.codecType);
 			return false;
 		}
 		context.listenIp = mediaIp;
