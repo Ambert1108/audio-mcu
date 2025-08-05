@@ -230,10 +230,10 @@ namespace aom {
 		std::string mixId{};
 		try {
 			swrContext = swr_alloc_set_opts(NULL,
-				AV_CH_LAYOUT_STEREO, // 输出声道布局
+				AV_CH_LAYOUT_MONO, // 输出声道布局
 				AV_SAMPLE_FMT_FLT, // 输出采样格式
 				48000,     // 输出采样率
-				AV_CH_LAYOUT_STEREO,  // 输入声道布局
+				AV_CH_LAYOUT_MONO,  // 输入声道布局
 				AV_SAMPLE_FMT_S16,      // 输入采样格式
 				48000,     // 输入采样率
 				0, NULL);
@@ -396,7 +396,7 @@ namespace aom {
 							it->second->sendRtp((uint8_t*)val.data(), val.size(), ts);
 						}
 						else if (ctx->codecType == 2) {
-							int outputFrameSize = av_samples_get_buffer_size(NULL, 2, val.size(), AV_SAMPLE_FMT_FLT, 1);
+							int outputFrameSize = av_samples_get_buffer_size(NULL, 1, val.size(), AV_SAMPLE_FMT_FLT, 1);
 							uint8_t* outputBuffer = (uint8_t*)av_malloc(outputFrameSize);
 							uint8_t* outputBufferArray[1]{};
 							outputBufferArray[0] = (uint8_t*)val.data();

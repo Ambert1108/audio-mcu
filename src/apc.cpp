@@ -173,13 +173,12 @@ namespace aom {
 		}
 		frame->data[0] = pcmData;
 		frame->nb_samples = nb_samples;
+		frame->channels = 1;
 		frame->pts = ts;
 		if (codecType == 1) {
-			frame->channels = 1;
 			frame->format = 1;
 		}
 		else if (codecType == 2) {
-			frame->channels = 2;
 			frame->format = 8;
 		}
 		encoder->getPacket(frame, pkt);
@@ -238,10 +237,10 @@ namespace aom {
 		int32_t timeCount = 0;
 		try {
 			swrContext = swr_alloc_set_opts(NULL,
-				AV_CH_LAYOUT_STEREO, // 输出声道布局
+				AV_CH_LAYOUT_MONO, // 输出声道布局
 				AV_SAMPLE_FMT_S16, // 输出采样格式
 				48000,     // 输出采样率
-				AV_CH_LAYOUT_STEREO,  // 输入声道布局
+				AV_CH_LAYOUT_MONO,  // 输入声道布局
 				AV_SAMPLE_FMT_FLT,      // 输入采样格式
 				48000,     // 输入采样率
 				0, NULL);
@@ -442,7 +441,7 @@ namespace aom {
 			}
 			else if (codecType == 2) {
 				I_LOG("opus decoder open");
-				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 2);
+				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
 			}
 			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}
@@ -467,7 +466,7 @@ namespace aom {
 			}
 			else if (codecType == 2) {
 				I_LOG("opus encoder open");
-				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 2);
+				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
 			}
 			I_LOG("[apc::setEncoder->{}] Encoder opened success.", jobId);
 		}
