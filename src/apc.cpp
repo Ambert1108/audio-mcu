@@ -441,7 +441,10 @@ namespace aom {
 			}
 			else if (codecType == 2) {
 				I_LOG("opus decoder open");
-				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
+				if (decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1) != 0) {
+					E_LOG("[apc::setDecoder->{}:{}] open Decoder failed", jobId, chnlId);
+					return -1;
+				}
 			}
 			I_LOG("[apc::setDecoder->{}:{}] Decoder opened success", jobId, chnlId);
 		}

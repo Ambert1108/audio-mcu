@@ -12,13 +12,17 @@
 #include "seeker/loggerApi.h"
 #include "seeker/json.hpp"
 #include "utils/InvokeTimer.hpp"
+#include "utils/httplib.h"
 
 #include "remix/remix.h"
+#include "aesir.hpp" 
 using namespace Remix;
 
+#include "HttpProcesser.hpp"
 #include "AudioPorcessChnl.h"
 
 namespace aom {
+
 	struct MediaProcessData {
 		uint32_t readPktNum = 0;
 		uint32_t sendPktNum = 0;
@@ -47,6 +51,8 @@ namespace aom {
 		int codecType = -1;
 		int outSampleRate = -1;
 		std::string callbackUrl;
+		std::string zimuUrl = "/zimu?roomId=video111222";
+		std::string transerId;
 		MpuContext(std::string id, std::string url)
 			: jobId(id), callbackUrl(url) {};
 	};
@@ -104,9 +110,10 @@ namespace aom {
 		MpuCtxPtr ctx;
 		MediaProcessData data;
 		UniqueMix mixer;
-		SwrContext* swrContext;
+		SwrContext* swrContext = nullptr;
+		SwrContext* trsSwrContext = nullptr;
 		std::string url, chnlIdRecord, chnlId;
-		//std::shared_ptr<httplib::Client> client;
+		std::shared_ptr<httplib::Client> client;
 		int64_t callbackTimePoint = 0;
 
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);

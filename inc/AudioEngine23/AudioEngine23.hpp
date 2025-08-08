@@ -21,26 +21,28 @@ namespace AudioEngine23 {
   class Decoder {
     uint8_t m_pOutData[1024 * 10];
     const AVCodec* codec;
-    AVCodecContext* c = NULL;
+    AVCodecContext* ctx = NULL;
 
-    bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize)
-    {
-      int ret = avcodec_receive_frame(c, inFrame);
+    bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize) {
+      if (!ctx) {
+        E_LOG("AVcodecContext is nullptr!");
+        return false;
+      }
+      int ret = avcodec_receive_frame(ctx, inFrame);
       if (ret < 0)
       {
         return false;
       }
-      int data_size = av_get_bytes_per_sample(c->sample_fmt);
+      int data_size = av_get_bytes_per_sample(ctx->sample_fmt);
       if (data_size < 0) {
         /* This should not occur, checking just for paranoia */
-        fprintf(stderr, "Failed to calculate data size\n");
+        E_LOG("Failed to calculate data size\n");
         return false;
       }
       int iCopyPos = 0;
-      for (int i = 0; i < inFrame->nb_samples; i++)
-      {
-        for (int ch = 0; ch < c->channels; ch++)
-        {
+      const int channels = 1;
+      for (int i = 0; i < inFrame->nb_samples; i++) {
+        for (int ch = 0; ch < channels; ch++) {
           memcpy(m_pOutData + iCopyPos, inFrame->data[ch] + data_size * i, data_size);
           iCopyPos = iCopyPos + data_size;
         }
@@ -58,23 +60,31 @@ namespace AudioEngine23 {
       else
           codec = avcodec_find_decoder(AV_CODEC_ID_PCM_ALAW); //寻找解码器
       if (!codec) {
-        fprintf(stderr, "Codec not found\n");
+        E_LOG("Codec not found\n");
         return -1;
       }
-      c = avcodec_alloc_context3(codec); //解码器初始化
-      if (!c) {
-        fprintf(stderr, "Could not allocate audio codec context\n");
+      ctx = avcodec_alloc_context3(codec); //解码器初始化
+      if (!ctx) {
+        E_LOG("Could not allocate audio codec context\n");
         return -2;
       }
-      c->sample_fmt = sample_fmt;    //设置采样格式
-      c->sample_rate = sample_rate;  //设置采样率
-      c->channels = channels;        //设置通道数
+      if (codecType == 2) {
+        ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;    //设置采样格式
+        ctx->sample_rate = sample_rate;  //设置采样率
+        ctx->channels = 2;        //设置通道数
+        ctx->channel_layout = AV_CH_LAYOUT_STEREO;        //设置通道数
+      }
+      else {
+        ctx->sample_fmt = sample_fmt;    //设置采样格式
+        ctx->sample_rate = sample_rate;  //设置采样率
+        ctx->channels = channels;        //设置通道数
+      }
       /* open it */
-      if (avcodec_open2(c, codec, NULL) < 0) {    //打开解码器+
-        fprintf(stderr, "Could not open codec\n");
+      if (avcodec_open2(ctx, codec, NULL) < 0) {    //打开解码器+
+        E_LOG("Could not open codec\n");
         return -3;
       }
-      I_LOG("codec sample_rate = {}, sample_fmt = {}, channels = {}", c->sample_rate, c->sample_fmt, c->channels);
+      I_LOG("codec sample_rate = {}, sample_fmt = {}, channels = {}", ctx->sample_rate, ctx->sample_fmt, ctx->channels);
       return 0;
     }
 
@@ -88,7 +98,7 @@ namespace AudioEngine23 {
         av_free(input->data);
         return -1;
       }
-      ret = avcodec_send_packet(c, input);
+      ret = avcodec_send_packet(ctx, input);
       av_packet_unref(input);
       if (ret < 0)
       {
@@ -99,8 +109,22 @@ namespace AudioEngine23 {
         uint8_t* pOutData = NULL;
         int OutSize = 0;
         if (getData(output, pOutData, OutSize)) {
-          output->nb_samples = OutSize / (c->channels * av_get_bytes_per_sample(c->sample_fmt));
-          ret = avcodec_fill_audio_frame(output, c->channels, c->sample_fmt, pOutData, OutSize, 1);
+          try {
+            if (!ctx) {
+              E_LOG("AVcodecContext is nullptr!");
+              return -1;
+            }
+            const int channels = 1;
+            int byte_sample = av_get_bytes_per_sample(ctx->sample_fmt);
+            int byte = channels * byte_sample;
+            if (byte == 0) throw std::logic_error("channels * byte_sample == 0");
+            output->nb_samples = OutSize / byte;
+          }
+          catch (std::exception& ex) {
+            E_LOG("ERROR: cal nb samples failed!");
+            return -1;
+          }
+          ret = avcodec_fill_audio_frame(output, ctx->channels, ctx->sample_fmt, pOutData, OutSize, 1);
           if (ret < 0) {
             E_LOG("ERROR: fill audio frame failed!");
             return -1;
@@ -114,7 +138,9 @@ namespace AudioEngine23 {
     // 关闭
     void close() {
       I_LOG("decoder closed");
-      avcodec_free_context(&c);
+      if (ctx) {
+        avcodec_free_context(&ctx);
+      }
     }
   };
 
