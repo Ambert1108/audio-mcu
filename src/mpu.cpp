@@ -262,6 +262,7 @@ namespace aom {
 					throw std::runtime_error("init trsSwrContext fail");
 				}
 			}
+
 			//FILE* file = fopen("16k.pcm", "wb");
 			//if (!file) {
 			//	E_LOG("File opening failed");

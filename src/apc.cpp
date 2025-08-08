@@ -90,8 +90,8 @@ namespace aom {
 		FreePortCallback callback) : jobId(jobid), chnlId(chnlid), listenPoint(listen), dstPoint(dst),
 		freePortCallback(callback), decoder(nullptr), encoder(nullptr), notifier(nullptr), switcher(nullptr) {
 		srcBuffer.reserve(30000);
-		frame = av_frame_alloc();
-		pkt = av_packet_alloc();
+		encFrame = av_frame_alloc();
+		encPkt = av_packet_alloc();
 		std::string name1 = chnlid + "_dec.pcm";
 		std::string name2 = chnlid + "_enc.pcm";
 		if (saveInput == 1) decFile = fopen(name1.c_str(), "wb");
@@ -106,9 +106,7 @@ namespace aom {
 		status << TaskStatusType::run;
 		this->codecType = codecType;
 		sampleRate = outputRate;
-		I_LOG("open1 codecType={}, inputRate={}, outputRate={}", codecType, inputRate, outputRate);
 		if (setDecoder(codecType, inputRate) != 0) return false;
-		I_LOG("open2 codecType={}, inputRate={}, outputRate={}", codecType, inputRate, outputRate);
 		if (setEncoder(codecType, outputRate) != 0) return false;
 		this->payloadType = payloadType;
 		//随机设置ssrc
@@ -123,8 +121,8 @@ namespace aom {
 		if (status.getStatus() == TaskStatusType::end) return;
 		status << TaskStatusType::down;
 		if (work1Th.joinable()) work1Th.join();
-		if(frame) av_frame_free(&frame);
-		if(pkt) av_packet_free(&pkt);
+		if(encFrame) av_frame_free(&encFrame);
+		if(encPkt) av_packet_free(&encPkt);
 		status << TaskStatusType::end;
 		freePortCallback(listenPoint.port);
 		I_LOG("[apc::close->{}:{}] channel close success", jobId, chnlId);
@@ -171,25 +169,25 @@ namespace aom {
 		else if (codecType == 2) {
 			if (saveOutput == 1) fwrite(pcmData, 1, nb_samples * 4, encFile);
 		}
-		frame->data[0] = pcmData;
-		frame->nb_samples = nb_samples;
-		frame->channels = 1;
-		frame->pts = ts;
+		encFrame->data[0] = pcmData;
+		encFrame->nb_samples = nb_samples;
+		encFrame->channels = 1;
+		encFrame->pts = ts;
 		if (codecType == 1) {
-			frame->format = 1;
+			encFrame->format = 1;
 		}
 		else if (codecType == 2) {
-			frame->format = 8;
+			encFrame->format = 8;
 		}
-		encoder->getPacket(frame, pkt);
+		encoder->getPacket(encFrame, encPkt);
 		this->ts += (sampleRate / 50);
-		std::vector<uint8_t> payload = std::vector<uint8_t>(pkt->data, pkt->data + pkt->size);
+		std::vector<uint8_t> payload = std::vector<uint8_t>(encPkt->data, encPkt->data + encPkt->size);
 		seeker::rtp::Rtp rtpPacket = seeker::rtp::Rtp(payloadType, 1, seqNum++, this->ts, ssrc, payload);
 		std::deque<Rtp> sendQueue{ std::move(rtpPacket) };
 		uniqueLock lck(switchLocker);
 		switcher->sendRtp(sendQueue);
-		av_packet_unref(pkt);
-		av_frame_unref(frame);
+		av_frame_unref(encFrame);
+		av_packet_unref(encPkt);
 	}
 
 	bool AudioPorcessChnl::ready() const { return chnlReady.load(); }
@@ -328,11 +326,11 @@ namespace aom {
 					pkt->dts = pkt->pts;
 					memcpy(pkt->data, payloadBuf.data(), payloadBuf.size());
 					int ret = av_packet_from_data(pkt, pkt->data, pkt->size);
-					if (ret < 0) {
-						E_LOG("[apc::workingLoop->{}:{}] use av_packet_from_data failed", jobId, chnlId);
-						av_free(pkt->data);
-						continue;
-					}
+					//if (ret < 0) {
+					//	E_LOG("[apc::workingLoop->{}:{}] use av_packet_from_data failed", jobId, chnlId);
+					//	av_free(pkt->data);
+					//	continue;
+					//}
 				
 					// 6.解码音频帧
 					if (decoder->getFrame(pkt, frame) != 0) {
@@ -437,11 +435,11 @@ namespace aom {
 				decoder = std::make_unique<AudioEngine23::Decoder>();
 			}
 			if (codecType == 1) {
-				decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_S16, 1);
+				decoder->open(AudioEngine23::AudioType::PCMA, sampleRate, AV_SAMPLE_FMT_S16, 1);
 			}
 			else if (codecType == 2) {
 				I_LOG("opus decoder open");
-				if (decoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1) != 0) {
+				if (decoder->open(AudioEngine23::AudioType::OPUS, sampleRate, AV_SAMPLE_FMT_FLT, 1) != 0) {
 					E_LOG("[apc::setDecoder->{}:{}] open Decoder failed", jobId, chnlId);
 					return -1;
 				}
@@ -465,11 +463,11 @@ namespace aom {
 			else encoder = std::make_unique<AudioEngine23::Encoder>();
 
 			if (codecType == 1) {
-				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_S16, 1);
+				encoder->open(AudioEngine23::AudioType::PCMA, sampleRate, AV_SAMPLE_FMT_S16, 1);
 			}
 			else if (codecType == 2) {
 				I_LOG("opus encoder open");
-				encoder->open(codecType, sampleRate, AV_SAMPLE_FMT_FLT, 1);
+				encoder->open(AudioEngine23::AudioType::OPUS, sampleRate, AV_SAMPLE_FMT_FLT, 1);
 			}
 			I_LOG("[apc::setEncoder->{}] Encoder opened success.", jobId);
 		}
