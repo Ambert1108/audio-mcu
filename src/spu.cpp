@@ -455,6 +455,7 @@ namespace aom {
     mcuAcCfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
     mcuCred = AuthCredInfo("digest", "*", user, 0, pwd);
     mcuAcCfg.sipConfig.authCreds.push_back(mcuCred);
+    mcuAcCfg.mediaConfig.useLoopMedTp = true;
     create(mcuAcCfg);
     I_LOG("Sip Process Unit Register uri sip:{}@{}:{}", user, ip, port);
     mcu = MediaControlUnit::getInstance();

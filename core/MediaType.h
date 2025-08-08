@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "SipProcesser.hpp"
+#include "SignalMessage.hpp"
 
 namespace aom {
 
@@ -44,4 +44,30 @@ namespace aom {
 	private:
 		inline static std::atomic<uint32_t> idPoint = 10000;
 	};
+
+	struct HandleError {
+		int errCode;
+		std::string errMsg;
+		HandleError(int code, const std::string& msg) : errCode(code), errMsg(msg) {};
+		HandleError() : errCode(0), errMsg("Success") {};
+
+		inline bool operator==(const HandleError& error) const {
+			if (this->errCode != error.errCode) return false;
+			return true;
+		}
+
+		inline bool operator!=(const HandleError& error) const {
+			if (*this == error) return false;
+			return true;
+		}
+	};
+
+	inline static HandleError Success{ };
+	inline static HandleError ApplyPortError{ APPLY_UDP_PORT_ERROR, APPLY_PORT_MSG };
+	inline static HandleError JobidExist{ JOBID_EXIST_ERROR, JOBID_EXIST_MSG };
+	inline static HandleError JoinJobError{ JOIN_JOB_ERROR, JOIN_JOB_MSG };
+	inline static HandleError JobidNotFound{ JOBID_NOTFOUND_ERROR, JOBID_NOTFOUND_MSG };
+	inline static HandleError ParamError{ KEY_PARAM_ERROR, KEY_PARAM_MSG };
+	inline static HandleError NoJobRun{ CHECK_JOB_ERROR, NO_JOB_MSG };
+	inline static HandleError UnknownError{ UNKNOWN_ERROR, GET_UNKNOWN_MSG };
 }

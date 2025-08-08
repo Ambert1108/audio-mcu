@@ -6,6 +6,8 @@
 
 #pragma once
 
+#define PJSUA_MEDIA_HAS_PJMEDIA       0
+
 #include <pjsua2.hpp>
 extern "C" {
 #include "pjsip.h"

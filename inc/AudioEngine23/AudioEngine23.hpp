@@ -68,17 +68,9 @@ namespace AudioEngine23 {
         E_LOG("Could not allocate audio codec context\n");
         return -2;
       }
-      if (codecType == 2) {
-        ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;    //设置采样格式
-        ctx->sample_rate = sample_rate;  //设置采样率
-        ctx->channels = 2;        //设置通道数
-        ctx->channel_layout = AV_CH_LAYOUT_STEREO;        //设置通道数
-      }
-      else {
-        ctx->sample_fmt = sample_fmt;    //设置采样格式
-        ctx->sample_rate = sample_rate;  //设置采样率
-        ctx->channels = channels;        //设置通道数
-      }
+      ctx->sample_fmt = sample_fmt;    //设置采样格式
+      ctx->sample_rate = sample_rate;  //设置采样率
+      ctx->channels = channels;        //设置通道数
       /* open it */
       if (avcodec_open2(ctx, codec, NULL) < 0) {    //打开解码器+
         E_LOG("Could not open codec\n");

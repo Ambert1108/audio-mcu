@@ -477,6 +477,7 @@ namespace aom {
 				swr_close(trsSwrContext);  // 关闭上下文
 				swr_free(&trsSwrContext);  // 释放上下文
 			}
+			manager.releaseTranser(ctx->transerId);
 		}
 		catch (std::exception& ex) {
 			E_LOG("[mpu::workingLoop->{}] get exception: {}", ctx->jobId, ex.what());

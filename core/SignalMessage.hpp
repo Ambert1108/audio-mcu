@@ -1,4 +1,4 @@
-// @brief: Http消息封装体
+// @brief: 信令消息封装体
 // @copyright: Copyright seekloud 2024
 // @birth: [Ambert@2024.4.29]
 // @version: V0.0.1
@@ -78,6 +78,77 @@ namespace aom {
   };
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PollRespInfo, jobNumber, jobList);
   typedef PollRespInfo PollResponse;
+
+  struct CreateJobContext {
+    std::string jobId = "unknown";
+    std::string url = "";
+    friend void from_json(const nlohmann::json& j, CreateJobContext& context) {
+      if(j.contains("url")) j.at("url").get_to(context.url);
+    }
+  };
+
+  struct AddChnlContext {
+    std::string jobId = "unknown";
+    std::string chnlId = "unknown";
+    int payloadType;
+    int codecType = -1;
+    int inSampleRate = -1;
+    int outSampleRate = -1;
+    std::string dstIp;
+    port_t dstPort;
+    mutable std::string listenIp{};
+    mutable port_t listenPort = 0;
+
+    friend void from_json(const nlohmann::json& j, AddChnlContext& context) {
+      j.at("jobId").get_to(context.jobId);
+      j.at("payloadType").get_to(context.payloadType);
+      j.at("codecType").get_to(context.codecType);
+      j.at("inSampleRate").get_to(context.inSampleRate);
+      j.at("outSampleRate").get_to(context.outSampleRate);
+      j.at("dstIp").get_to(context.dstIp);
+      j.at("dstPort").get_to(context.dstPort);
+    }
+  };
+
+  struct AddChnlRespInfo {
+    int errCode = 0;
+    std::string msg = "ok";
+    std::string listenIp;
+    int listenPort;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AddChnlRespInfo, errCode, msg, listenIp, listenPort);
+
+  struct RemoveChnlContext {
+    std::string jobId = "unknown";
+    std::string chnlId = "unknown";
+    RemoveChnlContext() = default;
+    RemoveChnlContext(std::string jId, std::string cId) : jobId(jId), chnlId(cId) {}
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RemoveChnlContext, jobId);
+
+  struct MicCtrlContext {
+    std::string jobId = "unknown";
+    std::string channelId = "unknown";
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MicCtrlContext, jobId, channelId);
+
+  struct UpdateContext {
+    std::string jobId = "unknown";
+    std::string channelId = "unknown";
+    std::string dstIp;
+    port_t dstPort;
+    UpdateContext() = default;
+    UpdateContext(std::string jId, std::string cId, std::string ip, port_t port)
+      : jobId(jId), channelId(cId), dstIp(ip), dstPort(port) {
+    }
+  };
+
+  //struct 
+
+  struct CallbackRequest {
+    std::string channelId;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CallbackRequest, channelId);
 
   struct CaptureRequest {
     std::string channelId = "all";
