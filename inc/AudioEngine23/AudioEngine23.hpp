@@ -81,15 +81,15 @@ namespace AudioEngine23 {
     //解码
     int getFrame(AVPacket* input, AVFrame* output) {
       int ret = 0;
-      ret = av_packet_from_data(input, input->data, input->size);
-      if (ret < 0)
-      {
-        E_LOG("av_packet_from_data error");
-        av_free(input->data);
-        return -1;
-      }
+      //ret = av_packet_from_data(input, input->data, input->size);
+      //if (ret < 0)
+      //{
+      //  E_LOG("av_packet_from_data error");
+      //  av_free(input->data);
+      //  return -1;
+      //}
       ret = avcodec_send_packet(c, input);
-      av_packet_unref(input);
+      //av_packet_unref(input);
       if (ret < 0)
       {
           E_LOG("avcodec_send_packet error");
