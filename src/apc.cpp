@@ -335,7 +335,7 @@ namespace aom {
 					// 6.解码音频帧
 					if (decoder->getFrame(pkt, frame) != 0) {
 						av_frame_unref(frame);
-						av_freep(pkt->data);
+						//av_freep(pkt->data);
 						av_packet_unref(pkt);
 						recvQueue.pop_front();
 						continue;
@@ -407,7 +407,8 @@ namespace aom {
 						t = seeker::time::currentTime() - usePoint;
 						if (t > 5) W_LOG("[apc::workingLoop->{}:{}] insert use {}ms", jobId, chnlId, t);
 					}
-					av_frame_unref(frame); av_frame_unref(frame);
+					av_frame_unref(frame);
+					//av_freep(pkt->data);
 					av_packet_unref(pkt);
 					recvQueue.pop_front();
 				}
