@@ -1,5 +1,7 @@
 #include "MediaProcessUnit.h"
 
+//extern sherpa zimu;
+
 namespace aom {
 
 	inline std::string parseTime(int64_t timestamp) {
@@ -243,15 +245,24 @@ namespace aom {
 					throw std::runtime_error("init swrContext fail");
 				}
 			}
-			auto& manager = aesir::TranscriberManager::getInstance();
-			if (!manager.getTranserId(ctx->transerId)) {
-				E_LOG("[mpu::workingLoop->{}] get zimu transfer id failed", ctx->jobId);
-				ctx->transerId.clear();
-			}
-			else {
+			//auto& manager = aesir::TranscriberManager::getInstance();
+			//if (!manager.getTranserId(ctx->transerId)) {
+			//	E_LOG("[mpu::workingLoop->{}] get zimu transfer id failed", ctx->jobId);
+			//	ctx->transerId.clear();
+			//}
+			//else {
+				//trsSwrContext = swr_alloc_set_opts(NULL,
+				//	AV_CH_LAYOUT_MONO, // 输出声道布局
+				//	AV_SAMPLE_FMT_S16, // 输出采样格式
+				//	16000,     // 输出采样率
+				//	AV_CH_LAYOUT_MONO,  // 输入声道布局
+				//	AV_SAMPLE_FMT_S16,      // 输入采样格式
+				//	ctx->outSampleRate,     // 输入采样率
+				//	0, NULL);
+
 				trsSwrContext = swr_alloc_set_opts(NULL,
 					AV_CH_LAYOUT_MONO, // 输出声道布局
-					AV_SAMPLE_FMT_S16, // 输出采样格式
+					AV_SAMPLE_FMT_FLT, // 输出采样格式
 					16000,     // 输出采样率
 					AV_CH_LAYOUT_MONO,  // 输入声道布局
 					AV_SAMPLE_FMT_S16,      // 输入采样格式
@@ -261,7 +272,7 @@ namespace aom {
 					E_LOG("init trsSwrContext fail");
 					throw std::runtime_error("init trsSwrContext fail");
 				}
-			}
+			//}
 
 			//FILE* file = fopen("16k.pcm", "wb");
 			//if (!file) {
@@ -391,16 +402,16 @@ namespace aom {
 							auto vec = mixer->getData(idForm);
 							if (vec.empty()) vec = std::vector<int16_t>(lengthStandard, 0);
 							dstForm.at(key1) = vec;
-							int outputFrameSize = av_samples_get_buffer_size(NULL, 1, vec.size(), AV_SAMPLE_FMT_S16, 1);
-							uint8_t* outputBuffer = (uint8_t*)av_malloc(outputFrameSize);
-							uint8_t* outputBufferArray[1]{};
-							outputBufferArray[0] = (uint8_t*)vec.data();
-							int outputSamples = swr_convert(trsSwrContext, &outputBuffer,
-								vec.size(), (const uint8_t**)&outputBufferArray[0], vec.size());
-							std::vector<int16_t> rawData{};
-							rawData.insert(rawData.end(), (int16_t*)outputBuffer, (int16_t*)outputBuffer + outputSamples / 2);
-							manager.pushInput(ctx->transerId, rawData);
-							av_free(outputBuffer);
+							//int outputFrameSize = av_samples_get_buffer_size(NULL, 1, vec.size(), AV_SAMPLE_FMT_S16, 1);
+							//uint8_t* outputBuffer = (uint8_t*)av_malloc(outputFrameSize);
+							//uint8_t* outputBufferArray[1]{};
+							//outputBufferArray[0] = (uint8_t*)vec.data();
+							//int outputSamples = swr_convert(trsSwrContext, &outputBuffer,
+							//	vec.size(), (const uint8_t**)&outputBufferArray[0], vec.size());
+							//std::vector<int16_t> rawData{};
+							//rawData.insert(rawData.end(), (int16_t*)outputBuffer, (int16_t*)outputBuffer + outputSamples / 2);
+							//manager.pushInput(ctx->transerId, rawData);
+							//av_free(outputBuffer);
 						}
 						mixer->clearData();
 					}
@@ -413,26 +424,26 @@ namespace aom {
 					W_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
 				}
 				std::string capture{};
-				int res = manager.popOutput(ctx->transerId, capture);
-				if (res == 0) {
-					W_LOG("[mpu::workingLoop->{}] zimu:{}", ctx->jobId, capture);
-					CaptureRequest capReq;
-					capReq.text = capture;
-					I_LOG("[mpu::workingLoop->{}] req signling body:\n{}", 
-						ctx->jobId, seeker::json::toJsonString(capReq));
-					auto res = client->Post(ctx->zimuUrl, seeker::json::toJsonString(capReq), "application/json");//向指定的地址发送请求body1，并接收回复res1
-					if (res == nullptr) {
-						E_LOG("[mpu::workingLoop->{}] no rsp from signling", ctx->jobId);
-					}
-					else {
-						if (res->status == 200) {
-							I_LOG("[mpu::workingLoop->{}] signling rsp body:\n{}", ctx->jobId, res->body);	
-						}
-						else {
-							E_LOG("[mpu::workingLoop->{}] signling rsp status={}, body:\n{}", ctx->jobId, res->status, res->body);
-						}
-					}
-				}
+				//int res = manager.popOutput(ctx->transerId, capture);
+				//if (res == 0) {
+				//	W_LOG("[mpu::workingLoop->{}] zimu:{}", ctx->jobId, capture);
+				//	CaptureRequest capReq;
+				//	capReq.text = capture;
+				//	I_LOG("[mpu::workingLoop->{}] req signling body:\n{}", 
+				//		ctx->jobId, seeker::json::toJsonString(capReq));
+				//	auto res = client->Post(ctx->zimuUrl, seeker::json::toJsonString(capReq), "application/json");//向指定的地址发送请求body1，并接收回复res1
+				//	if (res == nullptr) {
+				//		E_LOG("[mpu::workingLoop->{}] no rsp from signling", ctx->jobId);
+				//	}
+				//	else {
+				//		if (res->status == 200) {
+				//			I_LOG("[mpu::workingLoop->{}] signling rsp body:\n{}", ctx->jobId, res->body);	
+				//		}
+				//		else {
+				//			E_LOG("[mpu::workingLoop->{}] signling rsp status={}, body:\n{}", ctx->jobId, res->status, res->body);
+				//		}
+				//	}
+				//}
 				ts += lengthStandard;
 				//将可能的结果编码并下发给各通道发送
 				{
@@ -478,7 +489,7 @@ namespace aom {
 				swr_close(trsSwrContext);  // 关闭上下文
 				swr_free(&trsSwrContext);  // 释放上下文
 			}
-			manager.releaseTranser(ctx->transerId);
+			//manager.releaseTranser(ctx->transerId);
 		}
 		catch (std::exception& ex) {
 			E_LOG("[mpu::workingLoop->{}] get exception: {}", ctx->jobId, ex.what());

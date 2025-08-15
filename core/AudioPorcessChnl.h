@@ -12,6 +12,7 @@
 #include "rtpTrs/rtpTrs.hpp"
 #include "AudioEngine23/AudioEngine23.hpp"
 #include "utils/InvokeTimer.hpp"
+#include "aesir.hpp" 
 
 #include <deque>
 #include <vector>
@@ -117,8 +118,12 @@ namespace aom {
 		std::atomic<bool> chnlReady{ false };
 		FreePortCallback freePortCallback = nullptr;
 
+		std::vector<int16_t> speechRecognitionPcmData{};
+		std::mutex speechRecognitionPcmDataMtx;
+
 		std::string jobId;
 		std::string chnlId;
+		std::string transerId;
 		Point listenPoint, dstPoint;
 		std::atomic<float> db = 0.0f;
 		std::atomic<int> micType = 0; //0:off, !0:on
@@ -131,13 +136,16 @@ namespace aom {
 		const int64_t mpucheckInterval = seeker::IniConfig::GetInteger("log", "mpu_check_interval", 1);
 		const int saveInput = seeker::IniConfig::GetInteger("test", "save_input", 0);
 		const int saveOutput = seeker::IniConfig::GetInteger("test", "save_output", 0);
+		const std::string zimuId = seeker::IniConfig::Get("test", "zimu_id", "3082");
 
 		FILE* decFile = nullptr;
 		FILE* encFile = nullptr;
 		std::thread work1Th{};
+		std::thread work2Th{};
 		bool micOpenNeedClear = false;
 
 		void workingLoop();
+		void zimuLoop();
 		int setDecoder(int codecType, int sampleRate);
 		int setEncoder(int codecType, int sampleRate);
 	};

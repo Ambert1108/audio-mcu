@@ -137,6 +137,8 @@ namespace aom {
     std::string channelId = "unknown";
     std::string dstIp;
     port_t dstPort;
+    int codecType = -1;
+    
     UpdateContext() = default;
     UpdateContext(std::string jId, std::string cId, std::string ip, port_t port)
       : jobId(jId), channelId(cId), dstIp(ip), dstPort(port) {

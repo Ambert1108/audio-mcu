@@ -55,7 +55,10 @@ namespace aom {
       W_LOG("Debug: Recv Method:{}", method);
       if (method == "UPDATE") {
         I_LOG("[SC:{}] Receive UPDATE request, start process", chnlId);
-        account->updateChannelDestition(recvMsg);
+
+        if (!account->updateChannelDestition(recvMsg)) {
+          E_LOG("[SC] update channel {} faild", chnlId);
+        }
       }
     }
   }
@@ -176,12 +179,20 @@ namespace aom {
 
     SDPInfo info;
     parseSDP(msg, info);
-    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}",
-      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate);
+    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}, opus is {}",
+      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate, info.isOpus);
 
     UpdateContext ctx(jobId, chnlId, info.ip, info.port);
-    mcu->updateDestition(ctx);
+    if (info.isOpus) {
+      ctx.codecType = 2;
+    }
+    else {
+      ctx.codecType = 1;
+    }
 
+    if (!mcu->updateDestition(ctx)) {
+      return false;
+    }
     return true;
   }
 

@@ -112,6 +112,9 @@ namespace aom {
 		//随机设置ssrc
 		ssrc = rand() % 9000000 + 1000000 + (int32_t)seeker::time::currentTime();
 		work1Th = std::thread{ &AudioPorcessChnl::workingLoop, this };
+		if(chnlId == zimuId){
+			work2Th = std::thread{ &AudioPorcessChnl::zimuLoop, this };
+		}
 		I_LOG("[apc::open->{}:{}] channel open success. codecType:{}, inputRate:{}, payloadType:{}", 
 			jobId, chnlId, codecType, inputRate, payloadType);
 		return true;
@@ -121,6 +124,7 @@ namespace aom {
 		if (status.getStatus() == TaskStatusType::end) return;
 		status << TaskStatusType::down;
 		if (work1Th.joinable()) work1Th.join();
+		if (work2Th.joinable()) work2Th.join();
 		if(encFrame) av_frame_free(&encFrame);
 		if(encPkt) av_packet_free(&encPkt);
 		status << TaskStatusType::end;
@@ -366,6 +370,12 @@ namespace aom {
 							}
 							srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
 							D_LOG("recv pcm size = {}", size / 2);
+
+							{
+								std::unique_lock<std::mutex> lck2(speechRecognitionPcmDataMtx);
+								speechRecognitionPcmData.insert(speechRecognitionPcmData.end(), (int16_t*)frame->data[0], ((int16_t*)frame->data[0]) + frame->nb_samples * av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format)) * frame->channels / 2);
+							}
+
 							//ns(srcBuffer);
 							//dbTotal += calculateVolume(srcBuffer);
 							dbTotal += getDB(srcBuffer);
@@ -398,6 +408,12 @@ namespace aom {
 							if (saveInput == 1) fwrite(outputBuffer, 1, outputFrameSize, decFile);
 							srcBuffer.insert(srcBuffer.end(), (int16_t*)outputBuffer, (int16_t*)outputBuffer + outputFrameSize / 2);
 							D_LOG("recv pcm size = {}", size / 2);
+
+							{
+								std::unique_lock<std::mutex> lck2(speechRecognitionPcmDataMtx);
+								speechRecognitionPcmData.insert(speechRecognitionPcmData.end(), (int16_t*)outputBuffer, ((int16_t*)outputBuffer) + outputSamples);
+							}
+
 							//ns(srcBuffer);
 							//dbTotal += calculateVolume(srcBuffer);
 							dbTotal += getDB(srcBuffer);
@@ -425,6 +441,125 @@ namespace aom {
 		}
 		if (printTimer) printTimer->Cancel();
 		I_LOG("[apc::workingLoop->{}:{}] thread is close, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
+	}
+
+	void AudioPorcessChnl::zimuLoop() {
+		std::string fileName = "suanfa.pcm";
+		FILE* file = fopen(fileName.c_str(), "wb");;
+		SwrContext* swr_ctx = swr_alloc_set_opts(NULL,
+			AV_CH_LAYOUT_MONO, // 输出声道布局
+			AV_SAMPLE_FMT_S16, // 输出采样格式
+			16000,     // 输出采样率
+			AV_CH_LAYOUT_MONO,  // 输入声道布局
+			AV_SAMPLE_FMT_S16,  // 输入采样格式
+			48000,     // 输入采样率
+			0, NULL);
+		if (swr_init(swr_ctx) < 0) {
+			E_LOG("[apc::zimuLoop->{}:{}] init swrContext fail", jobId, chnlId);
+			return;
+		}
+		std::shared_ptr<httplib::Client> client = std::make_shared<httplib::Client>("10.1.69.7", 30556);
+		auto& manager = aesir::TranscriberManager::getInstance();
+		if (!manager.getTranserId(transerId)) {
+			E_LOG("[apc::zimuLoop->{}:{}] get zimu transfer id failed", jobId);
+			transerId.clear();
+		}
+		I_LOG("[apc::zimuLoop->{}:{}] zimuLoop start", jobId, chnlId);
+		while (status) {
+			int64_t startTime = seeker::time::currentTime();
+			std::string text;
+			std::vector<int16_t> tmpSpeechRecognitionPcmData;
+			{
+				std::unique_lock<std::mutex> lck(speechRecognitionPcmDataMtx);
+				tmpSpeechRecognitionPcmData = speechRecognitionPcmData;
+				speechRecognitionPcmData.clear();
+
+			}
+			//I_LOG("[apc::zimuLoop->{}:{}] tmpSpeechRecognitionPcmData.size {}", 
+			//	jobId, chnlId, tmpSpeechRecognitionPcmData.size());
+
+			if (tmpSpeechRecognitionPcmData.size() <= 0) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(20));
+				continue;
+			}
+
+			//重采样
+			int in_samples = tmpSpeechRecognitionPcmData.size();
+			int in_sample_rate = 48000;
+
+			std::vector<int16_t> output;
+
+			int out_samples = av_rescale_rnd(
+				swr_get_delay(swr_ctx, in_sample_rate) + in_samples,
+				16000,
+				in_sample_rate,
+				AV_ROUND_UP  // 向上取整，确保缓冲区足够
+			);
+
+			output.resize(out_samples);// 预分配输出容器大小
+
+			// 输入数据指针（需要转换为const uint8_t*数组格式）
+			const uint8_t* in_data[1] = { reinterpret_cast<const uint8_t*>(tmpSpeechRecognitionPcmData.data()) };
+			// 输出数据指针
+			uint8_t* out_data[1] = { reinterpret_cast<uint8_t*>(output.data()) };
+
+			// 执行重采样
+			int converted = swr_convert(
+				swr_ctx,
+				out_data, out_samples,    // 输出缓冲区和最大样本数
+				in_data, in_samples       // 输入缓冲区和样本数
+			);
+
+			// 检查重采样结果
+			if (converted <= 0) {
+				output.clear();
+				E_LOG("[apc::zimuLoop->{}:{}] converted <= 0");
+				return;
+			}
+
+			output.resize(converted);
+
+			//fwrite(output.data(), 1, output.size() * sizeof(float), file);
+
+			//I_LOG("[apc::zimuLoop->{}:{}] start get Zimu ", jobId, chnlId);
+			//获取文字,更新text
+			//continue;
+			manager.pushInput(transerId, output);
+			//if (status && tmpSpeechRecognitionPcmData.size() > 0) {
+				int res = manager.popOutput(transerId, text);
+				//I_LOG("tansferId={}, res={}", transerId, res);
+				if (res == 0) {
+					W_LOG("[apc::zimuLoop->{}:{}] capture:{}", jobId, chnlId, text);
+					CaptureRequest capReq;
+					capReq.text = text;
+					//I_LOG("[apc::zimuLoop->{}:{}] req signling body:\n{}",
+					//	jobId, chnlId, seeker::json::toJsonString(capReq));
+					auto res = client->Post("/zimu?roomId=video111222", seeker::json::toJsonString(capReq), "application/json");
+					if (res == nullptr) {
+						E_LOG("[apc::zimuLoop->{}:{}] no rsp from signling", jobId, chnlId);
+					}
+					else {
+						if (res->status == 200) {
+							I_LOG("[apc::zimuLoop->{}:{}] signling rsp body:\n{}", jobId, chnlId, res->body);
+						}
+						else {
+							E_LOG("[apc::zimuLoop->{}:{}] signling rsp status={}, body:\n{}", jobId, chnlId, res->status, res->body);
+						}
+					}
+				}
+				//I_LOG("[apc::zimuLoop->{}:{}] use time {}ms", jobId, chnlId, seeker::time::currentTime() - startTime);
+				//if (seeker::time::currentTime() - startTime < 60) {
+				//	std::this_thread::sleep_for(std::chrono::milliseconds(60 - seeker::time::currentTime() + startTime));
+				//}
+			//}
+		}
+		if (swr_ctx) {
+			swr_close(swr_ctx);  // 关闭上下文
+			swr_free(&swr_ctx);  // 释放上下文
+		}
+		manager.releaseTranser(transerId);
+		I_LOG("[apc::zimuLoop->{}:{}] speechRecognitionLoop end", jobId, chnlId);
+		return;
 	}
 
 	int AudioPorcessChnl::setDecoder(int codecType, int sampleRate) {

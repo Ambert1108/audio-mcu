@@ -40,7 +40,8 @@ namespace aom {
 
 		audioPortTool = std::make_unique<PortTool>(portPoint, portRange, "audio");
 		auto& manager = aesir::TranscriberManager::getInstance();
-		manager.startup("/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-large-v3-turbo.bin", 1);
+		manager.startup(1, "/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-large-v3-turbo.bin", 
+			"/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-silero-v5.1.2.bin");
 		W_LOG("[mcu::init] Media Control Unit Init Success, mcu check={}s", mcucheckInterval);
 		return 0;
 	}
@@ -262,6 +263,16 @@ namespace aom {
 
 		//mpu不存在，业务处理失败
 		if (it == mpus.end()) return false;
+
+		if (context.codecType != 1 && context.codecType != 2) {
+			E_LOG("[mcu::updateDestition][{}] request param: codecType is invalid val {}", context.jobId, context.codecType);
+			return false;
+		}
+		if (it->second->getCodecType() != -1 && it->second->getCodecType() != context.codecType) {
+			E_LOG("[mcu::updateDestition][{}] current codec type {} != user codec type {}",
+				context.jobId, it->second->getCodecType(), context.codecType);
+			return false;
+		}
 
 		//更新mpu
 		it->second->reportMediaInfo(std::make_unique<UpdateDestEvent>(context));

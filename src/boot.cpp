@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+//sherpa zimu{};
+
 int main(int argc, char* argv[]) {
 	using config = seeker::IniConfig;
 	using namespace aom;
@@ -51,7 +53,10 @@ int main(int argc, char* argv[]) {
 			E_LOG("[boot::Error] Init Media Control Unit failed");
 			throw std::logic_error("Init Media Control Unit failed");
 		}
-
+		//zimu.initConfig("/home/data/sherpa/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/encoder.int8.onnx", 
+		//	"/home/data/sherpa/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/decoder.onnx",
+		//	"/home/data/sherpa/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/joiner.int8.onnx", 
+		//	"/home/data/sherpa/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/tokens.txt");
 		bool isHttpMode = config::GetBoolean("test", "is_http", false);
 
 		if (isHttpMode) {

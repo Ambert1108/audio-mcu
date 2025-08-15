@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(faust VERSION 0.3.6)
+project(faust VERSION 0.3.7)
 
 set(PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/inc)
 list(APPEND PROJECT_INCLUDE ${PROJECT_SOURCE_DIR}/core)
@@ -103,6 +103,12 @@ list(APPEND PROJECT_LIBS ${WHISPER_LIBS})
 list(APPEND PROJECT_LIBS ${GGML_LIBS})
 message(STATUS "whisper lib: ${WHISPER_LIBS}")
 message(STATUS "ggml lib: ${GGML_LIBS}")
+
+#set(SHERPA_ONNX_ROOT "/usr/local/sherpa-onnx/build-shared/")
+#include_directories(${SHERPA_ONNX_ROOT}/include)
+#link_directories(${SHERPA_ONNX_ROOT}/lib)
+#set(ONNXRUNTIME_DIR "/usr/local/onnxruntime-linux-x64-cuda-1.13.1")
+#include_directories(${ONNXRUNTIME_DIR}/include)
 
 include(${PROJECT_SOURCE_DIR}/inc/remix/remixlink.cmake)
 
