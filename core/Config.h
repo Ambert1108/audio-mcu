@@ -32,7 +32,7 @@ namespace aom {
 namespace aom {
 
 	static const int httpThreadPoolCount = 16;
-	static const std::string version = "0.1.0";
+	static const std::string version = "0.4.0";
 
 	using uniqueLock = std::unique_lock<std::mutex>;
 	using lockGuard = std::lock_guard<std::mutex>;

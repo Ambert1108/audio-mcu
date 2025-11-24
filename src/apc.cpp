@@ -112,7 +112,7 @@ namespace aom {
 		//随机设置ssrc
 		ssrc = rand() % 9000000 + 1000000 + (int32_t)seeker::time::currentTime();
 		work1Th = std::thread{ &AudioPorcessChnl::workingLoop, this };
-		if(chnlId == zimuId){
+		if(isZimu && chnlId == zimuId) {
 			work2Th = std::thread{ &AudioPorcessChnl::zimuLoop, this };
 		}
 		I_LOG("[apc::open->{}:{}] channel open success. codecType:{}, inputRate:{}, payloadType:{}", 
@@ -371,7 +371,7 @@ namespace aom {
 							srcBuffer.insert(srcBuffer.end(), (int16_t*)frame->data[0], (int16_t*)frame->data[0] + size / 2);
 							D_LOG("recv pcm size = {}", size / 2);
 
-							{
+							if (isZimu && chnlId == zimuId) {
 								std::unique_lock<std::mutex> lck2(speechRecognitionPcmDataMtx);
 								speechRecognitionPcmData.insert(speechRecognitionPcmData.end(), (int16_t*)frame->data[0], ((int16_t*)frame->data[0]) + frame->nb_samples * av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format)) * frame->channels / 2);
 							}
@@ -409,7 +409,7 @@ namespace aom {
 							srcBuffer.insert(srcBuffer.end(), (int16_t*)outputBuffer, (int16_t*)outputBuffer + outputFrameSize / 2);
 							D_LOG("recv pcm size = {}", size / 2);
 
-							{
+							if (isZimu && chnlId == zimuId) {
 								std::unique_lock<std::mutex> lck2(speechRecognitionPcmDataMtx);
 								speechRecognitionPcmData.insert(speechRecognitionPcmData.end(), (int16_t*)outputBuffer, ((int16_t*)outputBuffer) + outputSamples);
 							}

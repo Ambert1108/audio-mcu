@@ -137,6 +137,7 @@ namespace aom {
 		const int saveInput = seeker::IniConfig::GetInteger("test", "save_input", 0);
 		const int saveOutput = seeker::IniConfig::GetInteger("test", "save_output", 0);
 		const std::string zimuId = seeker::IniConfig::Get("test", "zimu_id", "3082");
+		const bool isZimu = seeker::IniConfig::GetBoolean("test", "is_zimu", false);
 
 		FILE* decFile = nullptr;
 		FILE* encFile = nullptr;

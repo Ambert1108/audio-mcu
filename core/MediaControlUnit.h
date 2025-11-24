@@ -115,6 +115,7 @@ namespace aom {
 		const std::string mediaIp = seeker::IniConfig::Get("media", "ip", "0.0.0.0");
 		const int pt = seeker::IniConfig::GetInteger("media", "payload_type", 97);
 
+		const bool isZimu = seeker::IniConfig::GetBoolean("test", "is_zimu", false);
 
 		static MediaControlUnit* mcu;
 		static std::atomic<uint16_t> refCount_;

@@ -13,8 +13,10 @@ namespace aom {
 		if(mcuCheck) mcuCheck->Cancel();
 		closeCondition.notify_all();
 		if (AutoCloseThr.joinable()) AutoCloseThr.join();
-		auto& manager = aesir::TranscriberManager::getInstance();
-		manager.shutdown();
+		if (isZimu){
+			auto& manager = aesir::TranscriberManager::getInstance();
+			manager.shutdown();
+		}
 		RtpTransceiver::shutdown();
 		W_LOG("[mcu::close] Media Control Unit close Success");
 	}
@@ -39,9 +41,11 @@ namespace aom {
 		mcuCheck->Start();
 
 		audioPortTool = std::make_unique<PortTool>(portPoint, portRange, "audio");
-		auto& manager = aesir::TranscriberManager::getInstance();
-		manager.startup(1, "/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-large-v3-turbo.bin", 
-			"/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-silero-v5.1.2.bin");
+		if (isZimu) {
+			auto& manager = aesir::TranscriberManager::getInstance();
+			manager.startup(1, "/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-large-v3-turbo.bin",
+				"/home/pangu/workspace/aesir/whispercpp/whisper.cpp-master/models/ggml-silero-v5.1.2.bin");
+		}
 		W_LOG("[mcu::init] Media Control Unit Init Success, mcu check={}s", mcucheckInterval);
 		return 0;
 	}
