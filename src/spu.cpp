@@ -86,7 +86,7 @@ namespace aom {
         "a=fmtp:96 0-16\r\n"
         "a=rtpmap:121 telephone-event/48000\r\n"
         "a=fmtp:121 0-16\r\n"
-        "a=a=rtcp-fb:* ccm tmmbr\r\n";
+        "a=rtcp-fb:* ccm tmmbr\r\n";
     }
     else {
       newSdp =
@@ -104,14 +104,14 @@ namespace aom {
         "a=fmtp:8 0-16\r\n"
         "a=rtpmap:121 telephone-event/8000\r\n"
         "a=fmtp:121 0-16\r\n"
-        "a=a=rtcp-fb:* ccm tmmbr\r\n";
+        "a=rtcp-fb:* ccm tmmbr\r\n";
     }
     
     if (ait != std::string::npos && vit != std::string::npos) {
       // 存在audio和video
       newSdp +=
         "m=video 0 RTP/AVP 96\r\n"
-        "c=IN IP4 47.93.119.6";
+        "c=IN IP4 " + listenIp + "\r\n"
         "a=rtpmap:96 H264/90000\r\n"
         "a=fmtp:96 profile-level-id=42801F\r\n"
         "a=rtcp-fb:96 nack pli\r\n";

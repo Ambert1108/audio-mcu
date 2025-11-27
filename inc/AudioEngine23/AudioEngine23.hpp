@@ -23,17 +23,20 @@ namespace AudioEngine23 {
     const AVCodec* codec;
     AVCodecContext* c = NULL;
 
-    bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize)
-    {
+    bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize) {
       int ret = avcodec_receive_frame(c, inFrame);
       if (ret < 0)
       {
         return false;
       }
+      if (!c) {
+        E_LOG("AVcodecContext is nullptr");
+        return false;
+      }
       int data_size = av_get_bytes_per_sample(c->sample_fmt);
       if (data_size < 0) {
         /* This should not occur, checking just for paranoia */
-        fprintf(stderr, "Failed to calculate data size\n");
+        E_LOG("Failed to calculate data size\n");
         return false;
       }
       int iCopyPos = 0;
@@ -58,12 +61,12 @@ namespace AudioEngine23 {
       if(type==PCMA)
           codec = avcodec_find_decoder(AV_CODEC_ID_PCM_ALAW); //寻找解码器
       if (!codec) {
-        fprintf(stderr, "Codec not found\n");
+        E_LOG("Codec not found\n");
         return -1;
       }
       c = avcodec_alloc_context3(codec); //解码器初始化
       if (!c) {
-        fprintf(stderr, "Could not allocate audio codec context\n");
+        E_LOG("Could not allocate audio codec context\n");
         return -2;
       }
       c->sample_fmt = sample_fmt;    //设置采样格式
@@ -71,7 +74,7 @@ namespace AudioEngine23 {
       c->channels = channels;        //设置通道数
       /* open it */
       if (avcodec_open2(c, codec, NULL) < 0) {    //打开解码器+
-        fprintf(stderr, "Could not open codec\n");
+        E_LOG("Could not open codec\n");
         return -3;
       }
       I_LOG("codec sample_rate = {}, sample_fmt = {}, channels = {}", c->sample_rate, c->sample_fmt, c->channels);
