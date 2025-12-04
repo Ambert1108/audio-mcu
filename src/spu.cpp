@@ -228,10 +228,10 @@ namespace aom {
   void SipAccount::onIncomingCall(OnIncomingCallParam& iprm) {
     std::string msg = iprm.rdata.wholeMsg;
     W_LOG("Receive Call \n{}", msg);
-    if (!this->isValid() || this->isDefault()) {
+   /* if (!this->isValid() || this->isDefault()) {
       E_LOG("[SA] Account not valid, rejecting call");
       return;
-    }
+    }*/
 
     //取出INVITE中的From作为channelId
     std::string jobId = extractJobId(msg);
@@ -244,7 +244,6 @@ namespace aom {
 
     if (!mcu->checkJob(jobId)) {
       E_LOG("[SA] jobId {} not found", jobId);
-
       return;
     }
 
@@ -540,8 +539,7 @@ namespace aom {
 
   void SipProcessUnit::onInstantMessage(OnInstantMessageParam& prm) {
     I_LOG("Recv Msg\n{}", prm.msgBody);
-    W_LOG("DEBUG: return");
-    return;
+
     std::string userName = prm.msgBody;
     if (userName.size() > 11) {
       userName = userName.substr(userName.length() - 11, 11);
