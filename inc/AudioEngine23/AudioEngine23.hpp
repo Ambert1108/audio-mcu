@@ -22,15 +22,12 @@ namespace AudioEngine23 {
     uint8_t m_pOutData[1024 * 10];
     const AVCodec* codec;
     AVCodecContext* c = NULL;
+    AudioType expectedType;
 
     bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize) {
       int ret = avcodec_receive_frame(c, inFrame);
       if (ret < 0)
       {
-        return false;
-      }
-      if (!c) {
-        E_LOG("AVcodecContext is nullptr");
         return false;
       }
       int data_size = av_get_bytes_per_sample(c->sample_fmt);
@@ -55,6 +52,7 @@ namespace AudioEngine23 {
   public:
     // 初始化解码器
     int open(AudioType type,int sample_rate, AVSampleFormat sample_fmt, int channels) {
+      expectedType = type;
       I_LOG("# audio decoder open ar:{}, sf:{}, ch:{}", sample_rate, sample_fmt, channels);
       if(type==OPUS)
           codec = avcodec_find_decoder(AV_CODEC_ID_OPUS); //寻找解码器
@@ -84,19 +82,15 @@ namespace AudioEngine23 {
     //解码
     int getFrame(AVPacket* input, AVFrame* output) {
       int ret = 0;
-      //ret = av_packet_from_data(input, input->data, input->size);
-      //if (ret < 0)
-      //{
-      //  E_LOG("av_packet_from_data error");
-      //  av_free(input->data);
-      //  return -1;
-      //}
       ret = avcodec_send_packet(c, input);
-      //av_packet_unref(input);
-      if (ret < 0)
-      {
-          E_LOG("avcodec_send_packet error");
-          return -1;
+      if (ret < 0) {
+        if (ret == AVERROR_INVALIDDATA) {
+          E_LOG("Possible format mismatch, expected {} but got different data {}",
+            expectedType == OPUS ? "OPUS" : "PCMA");
+          return -2;
+        }
+        E_LOG("avcodec_send_packet error");
+        return -1;
       }
       while (true) {
         uint8_t* pOutData = NULL;

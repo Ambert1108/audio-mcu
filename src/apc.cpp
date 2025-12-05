@@ -228,6 +228,7 @@ namespace aom {
 		InvokeTimerPtr printTimer = nullptr;
 		uint16_t lastSeq = 0;
 		uint32_t lastTs = 0;
+		uint32_t lastSsrc = 0;
 		int size = 0;
 		AVPacket* pkt = av_packet_alloc();
 		AVFrame* frame = av_frame_alloc();
@@ -309,40 +310,51 @@ namespace aom {
 					//payloadType = rtpData.payloadType();
 					// 4.判断音频RTP包seq是否连续，若不连续说明丢包，需要补0
 					uint16_t seq = (int)rtpData.seq();
-					//if (lastSeq == 0) lastSeq = seq;
-					//else {
-					//	while (seq > lastSeq + 1) {
-					//		if (size) {
-					//			lockGuard lck(srcBufLocker);
-					//			srcBuffer.insert(srcBuffer.end(), size / 2, 0);
-					//		}
-					//		lastSeq++;
-					//	}
-					//}
+					uint32_t ssrc = 0;
+					try {
+						rtpData.getPayload(payloadBuf);
+						ssrc = rtpData.ssrc();
+						if (lastSsrc != 0) {
+							if (lastSsrc != ssrc) {
+								D_LOG("[apc::workingLoop->{}:{}] ssrc is not match! {} != {}", jobId, chnlId, lastSsrc, ssrc);
+								recvQueue.pop_front();
+								continue;
+							}
+						}
+						uint32_t ts = rtpData.timestamp();
+					}
+					catch (...) {
+						E_LOG("[apc::workingLoop->{}:{}]  get rtp info failed!", jobId, chnlId);
+						recvQueue.pop_front();
+						continue;
+					}
 					int mark = (int)rtpData.marker();
-					rtpData.getPayload(payloadBuf);
-					uint32_t ts = rtpData.timestamp();
 					
 					// 5.将音频RTP包中的数据存入AVPacket
-					pkt->size = payloadBuf.size();
-					pkt->data = (uint8_t*)av_malloc(pkt->size);
+					//pkt->size = payloadBuf.size();
+					//pkt->data = (uint8_t*)av_malloc(pkt->size);
+					if (av_new_packet(pkt, payloadBuf.size()) < 0) {
+						E_LOG("[apc::workingLoop->{}] malloc pkt failed, size={}", payloadBuf.size());
+						continue;
+					}
 					pkt->pts = ts;
 					pkt->dts = pkt->pts;
 					memcpy(pkt->data, payloadBuf.data(), payloadBuf.size());
-					//int ret = av_packet_from_data(pkt, pkt->data, pkt->size);
-					//if (ret < 0) {
-					//	E_LOG("[apc::workingLoop->{}:{}] use av_packet_from_data failed", jobId, chnlId);
-					//	av_free(pkt->data);
-					//	continue;
-					//}
 				
 					// 6.解码音频帧
-					if (decoder->getFrame(pkt, frame) != 0) {
+					int res = decoder->getFrame(pkt, frame);
+					if (res == -1) {
 						av_frame_unref(frame);
-						//av_freep(pkt->data);
 						av_packet_unref(pkt);
 						recvQueue.pop_front();
 						continue;
+					}
+					else if (res == -2) {
+						throw std::logic_error("decode type:" + std::to_string(codecType) + " is not match");
+					}
+					// 解码成功获取音频流ssrc
+					if (lastSsrc == 0) {
+						lastSsrc = ssrc;
 					}
 					int size = frame->nb_samples * av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format))
 						* frame->channels;

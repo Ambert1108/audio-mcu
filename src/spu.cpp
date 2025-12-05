@@ -14,6 +14,7 @@ namespace aom {
     //  pj_pool_release(pool);
     //}
     account = nullptr;
+    W_LOG("SipCall is destruct");
   }
 
   void SipCall::registerSipAccount(SipAccount* val) { account = val; }
@@ -155,9 +156,6 @@ namespace aom {
         E_LOG("find channel id:{} in call list failed", chnlId);
         return false;
       }
-      //CallOpParam prm;
-      //prm.statusCode = PJSIP_SC_OK;
-      //it->second->answer(prm);
       it->second.reset();
       callList.erase(it);
     }
@@ -448,8 +446,9 @@ namespace aom {
   void SipProcessUnit::open() {
     ep.libCreate();
     pj::EpConfig epCfg;
-    epCfg.uaConfig.maxCalls = 16;
+    epCfg.uaConfig.maxCalls = 64;
     epCfg.logConfig.level = 4;
+    epCfg.medConfig.maxMediaPorts = 500;
     //epCfg.logConfig.writer = &logger;
     ep.libInit(epCfg);
 
@@ -471,7 +470,6 @@ namespace aom {
     mcuAcCfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
     mcuCred = AuthCredInfo("digest", "*", user, 0, pwd);
     mcuAcCfg.sipConfig.authCreds.push_back(mcuCred);
-    mcuAcCfg.mediaConfig.useLoopMedTp = true;
     mcuAcCfg.callConfig.timerMinSESec = 90;
     mcuAcCfg.callConfig.timerSessExpiresSec = 1800;
     create(mcuAcCfg, true);
@@ -497,6 +495,8 @@ namespace aom {
     acfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
     AuthCredInfo cred("digest", "*", userName, 0, pwd);
     acfg.sipConfig.authCreds.push_back(cred);
+    acfg.mediaConfig.useLoopMedTp = true;
+    acfg.mediaConfig.enableLoopback = true;
     std::unique_ptr<SipAccount> acc = std::make_unique<SipAccount>();
     acc->create(acfg);
     acc->setRemoveCallListCallback(fn);
