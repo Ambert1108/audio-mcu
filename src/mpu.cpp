@@ -376,7 +376,7 @@ namespace aom {
 							it->second->getBuffer(data, lengthStandard);
 							if (data.empty()) continue;
 							if (i < 5) {
-								// 选取前三个通道进行混音
+								// 选取前五个通道进行混音
 								srcForm.insert(std::pair<std::string, std::vector<int16_t>>(id, data));
 								mixId = mixId + "|" + id;
 							}
