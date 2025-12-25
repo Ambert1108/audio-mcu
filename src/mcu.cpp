@@ -10,7 +10,8 @@ namespace aom {
 
 	MediaControlUnit::~MediaControlUnit() {
 		keepWork.store(false);
-		if(mcuCheck) mcuCheck->Cancel();
+		memCheck.stop();
+		if (mcuCheck) mcuCheck->Cancel();
 		closeCondition.notify_all();
 		if (AutoCloseThr.joinable()) AutoCloseThr.join();
 		if (isZimu){
@@ -25,21 +26,15 @@ namespace aom {
 		AutoCloseThr = std::thread{ &MediaControlUnit::autoClose, this };
 		endJobFunc = std::bind(&MediaControlUnit::endMpu, this, std::placeholders::_1);
 		freePortFunc = std::bind(&MediaControlUnit::freePort, this, std::placeholders::_1);
-
-		status.hostMemKeepTimePoint = seeker::time::currentTime();
+		memCheck.start(memcheckInterval, memprintInterval);
 		mcuCheck = InvokeTimer::CreateTimer(std::chrono::seconds(mcucheckInterval), true, [&]() {
-			size_t hostMem = seeker::file::getVmRSS();
-			if (hostMem > status.maxHostMem) {
-				status.hostMemKeepTimePoint = seeker::time::currentTime();
-				status.maxHostMem = hostMem;
-			}
-			double keepTime1 = static_cast<double>(seeker::time::currentTime() - status.hostMemKeepTimePoint)
-				/ (1000.0 * 60 * 60);
-			I_LOG("[MCU::check] running[{}] host mem/max[{}/{}KB] maxKeep[{:.3f}h]",
-				status.runningJob, hostMem, status.maxHostMem, keepTime1);
-		});
+			I_LOG("mcucheck: runningJob:{} | runningChnl:{} | create err:{} total:{} | "
+				"join err:{} total:{} | leave err:{} total:{} | destory err:{} total:{}",
+				status.runningJob.load(), status.runningChnl.load(), status.createErrNum.load(), status.createTotalNum.load(),
+				status.joinErrNum.load(), status.joinTotalNum.load(), status.leaveErrNum.load(), status.leaveTotalNum.load(),
+				status.destoryErrNum.load(), status.destoryTotalNum.load());
+			});
 		mcuCheck->Start();
-
 		audioPortTool = std::make_unique<PortTool>(portPoint, portRange, "audio");
 		if (isZimu) {
 			auto& manager = aesir::TranscriberManager::getInstance();
@@ -51,7 +46,6 @@ namespace aom {
 	}
 
 	void MediaControlUnit::autoClose() {
-
 		int64_t timePoint = 0;
 		mpuCloseForm tmpCloseForm{};
 
@@ -81,7 +75,7 @@ namespace aom {
 				if(data.closeMethod != "HttpRequest") autoCloseNum.fetch_add(1);
 				each = tmpCloseForm.erase(each);
 				status.runningJob.fetch_sub(1);
-				status.runningChnl.fetch_sub(1);
+				status.destoryTotalNum.fetch_add(1);
 			}
 		}
 
@@ -125,6 +119,7 @@ namespace aom {
 			if (!newMpu.second) return false;
 		}
 		status.runningJob.fetch_add(1);
+		status.createTotalNum.fetch_add(1);
 		return true;
 	}
 
@@ -137,6 +132,7 @@ namespace aom {
 			auto it = mpus.find(jobId);
 			if (it == mpus.end()) {
 				W_LOG("[mcu::removeMpu][{}] is not found.", jobId);
+				status.destoryErrNum.fetch_add(1);
 				return false;
 			}
 
@@ -168,31 +164,39 @@ namespace aom {
 		}
 
 		//mpu不存在，业务处理失败
-		if (it == mpus.end()) return false;
+		if (it == mpus.end()) {
+			status.joinErrNum.fetch_add(1);
+			return false;
+		}
 
 		//申请音频端口
 		port_t audioPort = audioPortTool->applyPort();
 		if (audioPort == -1) {
 			audioPortTool->freePort(audioPort);
+			status.joinErrNum.fetch_add(1);
 			return false;
 		}
 
 		if (context.inSampleRate == -1) {
 			E_LOG("[mcu::createMpu][{}] request param: inSampleRate is -1", context.jobId);
+			status.joinErrNum.fetch_add(1);
 			return false;
 		}
 		if (context.outSampleRate == -1) {
 			E_LOG("[mcu::createMpu][{}] request param: outSampleRate is -1", context.jobId);
+			status.joinErrNum.fetch_add(1);
 			return false;
 		}
 
 		if (context.codecType != 1 && context.codecType != 2) {
 			E_LOG("[mcu::createMpu][{}] request param: codecType is invalid val {}", context.jobId, context.codecType);
+			status.joinErrNum.fetch_add(1);
 			return false;
 		}
 		if (it->second->getCodecType() != -1 && it->second->getCodecType() != context.codecType) {
 			E_LOG("[mcu::createMpu][{}] current codec type {} != user codec type {}", 
 				context.jobId, it->second->getCodecType(), context.codecType);
+			status.joinErrNum.fetch_add(1);
 			return false;
 		}
 		context.listenIp = mediaIp;
@@ -203,6 +207,8 @@ namespace aom {
 		//更新mpu
 		it->second->reportMediaInfo(std::make_unique<AddChnlEvent>(context));
 
+		status.joinTotalNum.fetch_add(1);
+		status.runningChnl.fetch_add(1);
 		return true;
 	}
 
@@ -219,6 +225,8 @@ namespace aom {
 
 		//更新mpu
 		it->second->reportMediaInfo(std::make_unique<RemoveChnlEvent>(context));
+		status.leaveTotalNum.fetch_add(1);
+		status.runningChnl.fetch_sub(1);
 		return true;
 	}
 
@@ -291,5 +299,25 @@ namespace aom {
 			list.push_back(each.first);
 		}
 		return true;
+	}
+
+	void MediaControlUnit::setCreateErr() {
+		status.createErrNum.fetch_add(1);
+		status.createTotalNum.fetch_add(1);
+	}
+
+	void MediaControlUnit::setJoinErr() {
+		status.joinErrNum.fetch_add(1);
+		status.joinTotalNum.fetch_add(1);
+	}
+
+	void MediaControlUnit::setLeaveErr() {
+		status.leaveErrNum.fetch_add(1);
+		status.leaveTotalNum.fetch_add(1);
+	}
+
+	void MediaControlUnit::setDestoryErr() {
+		status.destoryErrNum.fetch_add(1);
+		status.destoryTotalNum.fetch_add(1);
 	}
 }

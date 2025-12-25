@@ -15,12 +15,96 @@
 namespace aom {
 
 	struct MCUStatus {
-		/* 最大主机内存,单位mb */
-		size_t maxHostMem = 0;
-		int64_t hostMemKeepTimePoint = 0;
+		std::atomic<uint64_t> runningJob{ 0 };
+		std::atomic<uint64_t> runningChnl{ 0 };
+		std::atomic<uint64_t> createErrNum{ 0 };
+		std::atomic<uint64_t> createTotalNum{ 0 };
+		std::atomic<uint64_t> joinErrNum{ 0 };
+		std::atomic<uint64_t> joinTotalNum{ 0 };
+		std::atomic<uint64_t> leaveErrNum{ 0 };
+		std::atomic<uint64_t> leaveTotalNum{ 0 };
+		std::atomic<uint64_t> destoryErrNum{ 0 };
+		std::atomic<uint64_t> destoryTotalNum{ 0 };
+	};
 
-		std::atomic<uint64_t> runningJob = 0;
-		std::atomic<uint64_t> runningChnl = 0;
+	class MemCheckTool{
+	public:
+		void start(int checkTime, int printTime) {
+			peakMemKeepTimePoint = seeker::time::currentTime();
+			std::time_t now = std::time(nullptr);
+			std::tm* local_time = std::localtime(&now);
+			currentSession = local_time->tm_hour;
+			lastPeakTime.store(seeker::time::currentTime());
+			memCheck = InvokeTimer::CreateTimer(std::chrono::seconds(checkTime), true, [&]() {
+				// 统计当前内存占用
+				currentMem.store(seeker::file::getVmRSS());
+
+				// 判断并统计峰值内存占用
+				if (currentMem.load() > peakMem.load()) {
+					peakMemKeepTimePoint = seeker::time::currentTime();
+					peakMem.store(currentMem.load());
+					lastPeakTime.store(seeker::time::currentTime());
+				}
+
+				// 判断周期是否变化
+				if (checkSession()) {
+					// 统计上一周期峰值内存
+					lastSessionPeakMem.store(sessionPeakMem.load());
+					sessionPeakMem.store(0);
+				}
+				else {
+					// 统计当前周期峰值内存
+					if (currentMem.load() > sessionPeakMem.load()) {
+						sessionPeakMem.store(currentMem.load());
+					}
+				}
+
+				});
+			memCheck->Start();
+			double peakMemKeepTime = 0;
+			memPrint = InvokeTimer::CreateTimer(std::chrono::seconds(printTime), true, [&]() {
+				peakMemKeepTime = static_cast<double>(seeker::time::currentTime() - peakMemKeepTimePoint)
+					/ (1000.0 * 60 * 60); // 峰值内存持续时长
+				std::string lastPeakTimeStr = seeker::time::toString(lastPeakTime); // 最近一次峰值时间
+				I_LOG("memcheck: session:{} | mem:{}KB | peak mem:{}KB | last peek time:{} | "
+					"peakKeep:{:.3f}h | last session peak:{}KB | session peak:{}KB",
+					currentSession.load(), currentMem.load(), peakMem.load(), lastPeakTimeStr, 
+					peakMemKeepTime, lastSessionPeakMem.load(), sessionPeakMem.load());
+				});
+			memPrint->Start();
+		}
+
+		void stop() {
+			if (memCheck) memCheck->Cancel();
+			if (memPrint) memPrint->Cancel();
+		}
+
+	private:
+		bool checkSession() {
+			std::time_t now = std::time(nullptr);
+			std::tm* local_time = std::localtime(&now);
+
+			// 判断是否为整点（分钟为0）
+			if (local_time->tm_min == 0) {
+				// 如果小时数变化，且不是首次检查的整点
+				if (currentSession.load() != local_time->tm_hour) {
+					currentSession.store(local_time->tm_hour);
+					return true;
+				}
+			}
+			return false;
+		}
+
+		InvokeTimerPtr memCheck = nullptr;
+		InvokeTimerPtr memPrint = nullptr;
+		int64_t peakMemKeepTimePoint = 0;
+		/* 内存监控相关字段 */
+		std::atomic<size_t> currentMem{ 0 };           // 当前内存使用(KB)
+		std::atomic<size_t> peakMem{ 0 };              // 历史峰值内存使用(KB)
+		std::atomic<time_t> lastPeakTime{ 0 };         // 最近一次峰值时间
+		std::atomic<size_t> lastSessionPeakMem{ 0 };   // 上一周期运行峰值(KB)
+		std::atomic<size_t> sessionPeakMem{ 0 };       // 当前周期运行峰值(KB)
+		std::atomic<int> currentSession{ 0 };          // 当前时间周期（每小时）
 	};
 
 	using PortList = std::unordered_set<port_t>;
@@ -107,6 +191,8 @@ namespace aom {
 		void freePort(port_t);
 
 		const int64_t mcucheckInterval = seeker::IniConfig::GetInteger("log", "mcu_check_interval", 1);
+		const int64_t memcheckInterval = seeker::IniConfig::GetInteger("log", "mem_check_interval", 5);
+		const int64_t memprintInterval = seeker::IniConfig::GetInteger("log", "mem_print_interval", 60);
 		const int autocheckInterval = seeker::IniConfig::GetInteger("log", "auto_check_interval", 300);
 
 		const port_t portPoint = seeker::IniConfig::GetInteger("main", "port_point", 62300);
@@ -136,8 +222,9 @@ namespace aom {
 		std::atomic<uint64_t> autoCloseNum{ 0 };
 		uint32_t createNum = 0;
 
-		MCUStatus status;
 		InvokeTimerPtr jobPoll = nullptr;
+		MemCheckTool memCheck;
+		MCUStatus status;
 		InvokeTimerPtr mcuCheck = nullptr;
 
 	public:
@@ -173,6 +260,11 @@ namespace aom {
 		bool updateDestition(const UpdateContext& context);
 
 		bool getMpuIdList(mpuIdList& list);
+
+		void setCreateErr();
+		void setJoinErr();
+		void setLeaveErr();
+		void setDestoryErr();
 	};
 
 }

@@ -287,8 +287,8 @@ namespace aom {
 				while (recvQueue.empty() && status && micType.load() != 0) {
 					notifier->waitNotify(1);
 					switcher->receiveRtp(recvQueue);
-					if (noRtpCount > 100) {
-						W_LOG("[apc::workingLoop->{}:{}] no rtp data", jobId, chnlId);
+					if (noRtpCount > 5000) {
+						D_LOG("[apc::workingLoop->{}:{}] no rtp data over 5s", jobId, chnlId);
 						noRtpCount = 0;
 					}
 					noRtpCount++;
@@ -311,6 +311,7 @@ namespace aom {
 					// 4.判断音频RTP包seq是否连续，若不连续说明丢包，需要补0
 					uint16_t seq = (int)rtpData.seq();
 					uint32_t ssrc = 0;
+					uint32_t ts = 0;
 					try {
 						rtpData.getPayload(payloadBuf);
 						ssrc = rtpData.ssrc();
@@ -321,7 +322,7 @@ namespace aom {
 								continue;
 							}
 						}
-						uint32_t ts = rtpData.timestamp();
+						ts = rtpData.timestamp();
 					}
 					catch (...) {
 						E_LOG("[apc::workingLoop->{}:{}]  get rtp info failed!", jobId, chnlId);

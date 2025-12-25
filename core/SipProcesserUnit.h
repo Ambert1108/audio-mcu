@@ -45,7 +45,7 @@ namespace aom {
 
     void registerSipAccount(SipAccount* val);
 
-    void setId(const std::string& id);
+    void setId(const std::string& jobId, const std::string& chnlId);
 
     void setPort(port_t val);
 
@@ -61,6 +61,7 @@ namespace aom {
     pj_pool_t* pool = nullptr;
     const std::string listenIp = seeker::IniConfig::Get("media", "nat_ip", "0.0.0.0");
     port_t listenPort = -1;
+    std::string jobId{};
     std::string chnlId{};
     bool isOpus = false;
   };
@@ -84,11 +85,16 @@ namespace aom {
 
     bool closeChannel(const std::string& msg);
 
+    bool closeChannel(const std::string& jobId, const std::string& chnlId);
+
     bool updateChannelDestition(const std::string& msg);
 
     void setRemoveCallListCallback(RemoveCallList func);
 
     void setUnregistering(bool val);
+
+    void setJoinErr();
+    void setLeaveErr();
 
     virtual void onRegState(OnRegStateParam& prm) override;
 

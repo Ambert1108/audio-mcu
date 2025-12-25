@@ -421,7 +421,7 @@ namespace aom {
 					for (const auto& [key, val] : dstForm) {
 						dstForm.at(key) = std::vector<int16_t>(lengthStandard, 0);
 					}
-					W_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
+					D_LOG("[mpu::workingLoop->{}] no need mix, send zero data", ctx->jobId);
 				}
 				std::string capture{};
 				//int res = manager.popOutput(ctx->transerId, capture);

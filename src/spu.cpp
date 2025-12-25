@@ -19,7 +19,10 @@ namespace aom {
 
   void SipCall::registerSipAccount(SipAccount* val) { account = val; }
 
-  void SipCall::setId(const std::string& id) { chnlId = id; }
+  void SipCall::setId(const std::string& jobId, const std::string& chnlId) {
+    this->jobId = jobId;
+    this->chnlId = chnlId;
+  }
 
   void SipCall::setPort(port_t val) {
     listenPort = val;
@@ -27,8 +30,18 @@ namespace aom {
 
   void SipCall::onCallState(OnCallStateParam& prm) {
     CallInfo ci = getInfo();
-    I_LOG("[SC:{}] status change, current code {} from {}", chnlId, ci.lastReason, ci.remoteUri);
-
+    I_LOG("[SC:{}] status change: {} {} from {}", chnlId, ci.lastStatusCode, ci.lastReason, ci.remoteUri);
+    if (ci.lastStatusCode > 300) {
+      if (ci.state == PJSIP_INV_STATE_INCOMING) {
+        E_LOG("[SC:{}] send response code > 300, join meeting failed", chnlId);
+        account->setJoinErr();
+        account->closeChannel(jobId, chnlId);
+      }
+      else if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
+        E_LOG("[SC:{}] send response code > 300, destory meeting failed", chnlId);
+        account->setLeaveErr();
+      }
+    }
     if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
       SipRxData rdata = prm.e.body.tsxState.src.rdata;
       if (account) {
@@ -36,6 +49,7 @@ namespace aom {
       }
       else {
         E_LOG("[SC:{}] SipAccount already destory, can't use closeChannel", chnlId);
+        account->setLeaveErr();
       }
     }
     if (ci.lastStatusCode == PJSIP_SC_REQUEST_UPDATED) {
@@ -47,11 +61,12 @@ namespace aom {
   }
 
   void SipCall::onCallTsxState(OnCallTsxStateParam& prm) {
+    W_LOG("onCallTsxState");
     std::string sendMsg = prm.e.body.tsxState.src.tdata.wholeMsg;
     std::string recvMsg = prm.e.body.tsxState.src.rdata.wholeMsg;
     if(!sendMsg.empty()) I_LOG("Send Msg\n{}", sendMsg);
     if (!recvMsg.empty()) {
-      I_LOG("Recv Msg\n{}", recvMsg);
+      D_LOG("Recv Msg\n{}", recvMsg);
       std::string method = prm.e.body.tsxState.tsx.method;
       W_LOG("Debug: Recv Method:{}", method);
       if (method == "UPDATE") {
@@ -65,8 +80,6 @@ namespace aom {
   }
 
   void SipCall::onCallSdpCreated(pj::OnCallSdpCreatedParam& prm) {
-    I_LOG("[SC:{}] raw sdp:\n{}", chnlId, prm.sdp.wholeSdp);
-
     // 生成sdp
     std::string newSdp;
     auto ait = prm.sdp.wholeSdp.find("m=audio");
@@ -120,7 +133,7 @@ namespace aom {
 
     prm.sdp.wholeSdp = newSdp;
 
-    I_LOG("[SC:{}] modify sdp:\n{}", chnlId, prm.sdp.wholeSdp);
+    D_LOG("[SC:{}] new answer sdp:\n{}", chnlId, prm.sdp.wholeSdp);
   }
 
   SipAccount::SipAccount() {
@@ -143,23 +156,49 @@ namespace aom {
     if (std::regex_match(jobId, match, pattern)) {
       jobId = match[1];
     }
+    else {
+      E_LOG("[SA::closeChannel] match {} failed!", jobId);
+      mcu->setLeaveErr();
+      return false;
+    }
     std::string chnlId = extractChnlId(msg);
-    I_LOG("[SA:{}->{}]start remove channel", jobId, chnlId);
+    I_LOG("[SA:{}] start remove channel {}", jobId, chnlId);
     RemoveChnlContext ctx(jobId, chnlId);
     mcu->removeChnl(ctx);
-    W_LOG("[SA:{}->{}] remove step: remove channel finish", jobId, chnlId);
+    W_LOG("[SA:{}] remove step: remove channel {} finish", jobId, chnlId);
 
     {
       std::lock_guard<std::mutex> lck(listLocker);
       auto it = callList.find(chnlId);
       if (it == callList.end()) {
-        E_LOG("find channel id:{} in call list failed", chnlId);
+        E_LOG("find channel {} in call list failed", chnlId);
         return false;
       }
       it->second.reset();
       callList.erase(it);
     }
-    I_LOG("[SA:{}->{}] remove step: remove call finish", jobId, chnlId);
+    I_LOG("[SA:{}] remove step: remove call {} finish", jobId, chnlId);
+
+    return true;
+  }
+
+  bool SipAccount::closeChannel(const std::string& jobId, const std::string& chnlId) {
+    I_LOG("[SA:{}] start remove channel {}", jobId, chnlId);
+    RemoveChnlContext ctx(jobId, chnlId);
+    mcu->removeChnl(ctx);
+    W_LOG("[SA:{}] remove step: remove channel {} finish", jobId, chnlId);
+
+    {
+      std::lock_guard<std::mutex> lck(listLocker);
+      auto it = callList.find(chnlId);
+      if (it == callList.end()) {
+        E_LOG("find channel {} in call list failed", chnlId);
+        return false;
+      }
+      it->second.reset();
+      callList.erase(it);
+    }
+    I_LOG("[SA:{}] remove step: remove call {} finish", jobId, chnlId);
 
     return true;
   }
@@ -202,6 +241,14 @@ namespace aom {
     isUnregistering = val;
   }
 
+  void SipAccount::setJoinErr() {
+    mcu->setJoinErr();
+  }
+
+  void SipAccount::setLeaveErr() {
+    mcu->setLeaveErr();
+  }
+
   void SipAccount::onRegState(OnRegStateParam& prm) {
     AccountInfo ai = getInfo();
     if (ai.regIsActive) {
@@ -225,7 +272,7 @@ namespace aom {
 
   void SipAccount::onIncomingCall(OnIncomingCallParam& iprm) {
     std::string msg = iprm.rdata.wholeMsg;
-    W_LOG("Receive Call \n{}", msg);
+    D_LOG("Receive Call \n{}", msg);
    /* if (!this->isValid() || this->isDefault()) {
       E_LOG("[SA] Account not valid, rejecting call");
       return;
@@ -239,14 +286,20 @@ namespace aom {
     if (std::regex_match(jobId, match, pattern)) {
       jobId = match[1];
     }
+    else {
+      E_LOG("[SA::onIncomingCall] match {} failed!", jobId);
+      mcu->setJoinErr();
+      return;
+    }
 
     if (!mcu->checkJob(jobId)) {
-      E_LOG("[SA] jobId {} not found", jobId);
+      E_LOG("[SA::onIncomingCall] jobId {} not found", jobId);
+      mcu->setJoinErr();
       return;
     }
 
     std::string chnlId = extractChnlId(msg);
-    I_LOG("[SA] get jobId {} and chnlId {}", jobId, chnlId);
+    I_LOG("[SA::onIncomingCall] get jobId {} and chnlId {}", jobId, chnlId);
     std::string dstIp;
     int dstPort;
     //取出INVITE中的SDP
@@ -277,8 +330,9 @@ namespace aom {
 
     auto call = std::make_unique<SipCall>(info.isOpus, *this, iprm.callId);
     call->registerSipAccount(this);
+    call->setId(jobId, chnlId);
     CallInfo ci = call->getInfo();
-
+    I_LOG("debug: call last status code is {}", ci.lastStatusCode);
     CallOpParam answer_prm;
     answer_prm.statusCode = PJSIP_SC_RINGING;
     call->answer(answer_prm);
@@ -287,6 +341,7 @@ namespace aom {
       E_LOG("[SA:{}->{}] add channel faild", jobId, chnlId);
       answer_prm.statusCode = PJSIP_SC_BAD_REQUEST;
       call->answer(answer_prm);
+      return;
     }
     MicCtrlContext ctx;
     ctx.jobId = jobId;
@@ -361,7 +416,7 @@ namespace aom {
       E_LOG("find sdp failed");
     }
     std::string sdp = wholeMsg.substr(sdp_start + 4); // 跳过头部和空行
-    I_LOG("Offer SDP:\n{}", sdp);
+    D_LOG("Offer SDP:\n{}", sdp);
     std::istringstream iss(sdp);
     std::string line;
 
@@ -371,7 +426,7 @@ namespace aom {
       if (c_pos == 0 || (sdp[c_pos - 1] == '\n' && (c_pos == 1 || sdp[c_pos - 2] == '\r'))) {
         size_t end_line = sdp.find("\r\n", c_pos);
         std::string c_line = sdp.substr(c_pos, end_line - c_pos);
-        I_LOG("c: {}", c_line);
+        D_LOG("c: {}", c_line);
 
         // 分割c=行的内容
         std::istringstream iss(c_line);
@@ -392,7 +447,7 @@ namespace aom {
           }
 
           info.ip = connectionAddress;
-          I_LOG("dst ip is {}", info.ip);
+          D_LOG("dst ip is {}", info.ip);
           break; // 提取第一个有效的IP后退出
         }
         else {
@@ -409,7 +464,7 @@ namespace aom {
       size_t port_end = sdp.find(" ", audio_pos + 8); // "m=audio "共8字符
       std::string audioPort = sdp.substr(audio_pos + 8, port_end - (audio_pos + 8));
       info.port = std::atoi(audioPort.c_str());
-      I_LOG("audio port is {}", info.port);
+      D_LOG("audio port is {}", info.port);
     }
 
     while (std::getline(iss, line)) {
@@ -420,11 +475,11 @@ namespace aom {
         size_t slashPos = line.find('/');
         if (colonPos != std::string::npos && slashPos != std::string::npos) {
           info.payloadType = std::stoi(line.substr(colonPos + 1, slashPos - colonPos - 1));
-          I_LOG("get pt is {}", info.payloadType);
+          D_LOG("get pt is {}", info.payloadType);
           size_t ratePos = line.find('/', slashPos + 1);
           if (ratePos != std::string::npos) {
             info.sampleRate = std::stoi(line.substr(slashPos + 1, ratePos - slashPos - 1));
-            I_LOG("get sampleRate is {}", info.sampleRate);
+            D_LOG("get sampleRate is {}", info.sampleRate);
           }
         }
       }
@@ -448,7 +503,7 @@ namespace aom {
     pj::EpConfig epCfg;
     epCfg.uaConfig.maxCalls = 64;
     epCfg.logConfig.level = 4;
-    epCfg.medConfig.maxMediaPorts = 500;
+    epCfg.medConfig.maxMediaPorts = 5000;
     //epCfg.logConfig.writer = &logger;
     ep.libInit(epCfg);
 
