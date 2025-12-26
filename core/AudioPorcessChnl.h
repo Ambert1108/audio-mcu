@@ -106,10 +106,8 @@ namespace aom {
 		Encoder encoder;
 		RtpTrxer switcher;
 		mutable std::mutex switchLocker{};
-		RtpNotifier notifier;
 		AVFrame* encFrame;
 		AVPacket* encPkt;
-		SwrContext* swrContext;
 
 		TaskStatus status;
 		ChnlData data;

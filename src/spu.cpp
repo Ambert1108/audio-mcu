@@ -61,7 +61,6 @@ namespace aom {
   }
 
   void SipCall::onCallTsxState(OnCallTsxStateParam& prm) {
-    W_LOG("onCallTsxState");
     std::string sendMsg = prm.e.body.tsxState.src.tdata.wholeMsg;
     std::string recvMsg = prm.e.body.tsxState.src.rdata.wholeMsg;
     if(!sendMsg.empty()) I_LOG("Send Msg\n{}", sendMsg);
@@ -580,6 +579,12 @@ namespace aom {
     }
     acList.erase(id);
     W_LOG("[SPU] unregister {} success", userName);
+
+    unsigned activePorts = pjsua_conf_get_active_ports();
+    unsigned maxPorts = pjsua_conf_get_max_ports();
+    I_LOG("=== 系统资源状态 === ");
+    I_LOG("会议桥端口: {}/{}", activePorts, maxPorts);
+    I_LOG("==================");
   }
   
   void SipProcessUnit::onRegState(OnRegStateParam& prm) {
@@ -604,6 +609,11 @@ namespace aom {
     std::smatch match, match2;
 
     if (std::regex_match(userName, match, pattern)) {
+      unsigned activePorts = pjsua_conf_get_active_ports();
+      unsigned maxPorts = pjsua_conf_get_max_ports();
+      I_LOG("=== 系统资源状态 === ");
+      I_LOG("会议桥端口: {}/{}", activePorts, maxPorts);
+      I_LOG("==================");
       registerAccount(userName);
       CreateJobContext createCtx;
       createCtx.jobId = match[1];

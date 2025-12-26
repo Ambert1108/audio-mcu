@@ -88,7 +88,7 @@ namespace aom {
 
 	AudioPorcessChnl::AudioPorcessChnl(const std::string& jobid, const std::string& chnlid, Point listen, Point dst,
 		FreePortCallback callback) : jobId(jobid), chnlId(chnlid), listenPoint(listen), dstPoint(dst),
-		freePortCallback(callback), decoder(nullptr), encoder(nullptr), notifier(nullptr), switcher(nullptr) {
+		freePortCallback(callback), decoder(nullptr), encoder(nullptr), switcher(nullptr) {
 		srcBuffer.reserve(30000);
 		encFrame = av_frame_alloc();
 		encPkt = av_packet_alloc();
@@ -125,8 +125,16 @@ namespace aom {
 		status << TaskStatusType::down;
 		if (work1Th.joinable()) work1Th.join();
 		if (work2Th.joinable()) work2Th.join();
-		if(encFrame) av_frame_free(&encFrame);
-		if(encPkt) av_packet_free(&encPkt);
+		if (encFrame) {
+			av_frame_unref(encFrame);
+			av_frame_free(&encFrame);
+		}
+		if (encPkt) {
+			av_packet_unref(encPkt);
+			av_packet_free(&encPkt);
+		}
+		if (decoder) decoder->close();
+		if (encoder) encoder->close();
 		status << TaskStatusType::end;
 		freePortCallback(listenPoint.port);
 		I_LOG("[apc::close->{}:{}] channel close success", jobId, chnlId);
@@ -199,6 +207,7 @@ namespace aom {
 	bool AudioPorcessChnl::micOpen() const { return micType != 0 ? true : false; }
 
 	void AudioPorcessChnl::workingLoop() {
+		RtpNotifier notifier = nullptr;
 		try {
 			//设置视频RTP接收器，让接收器绑定收流地址并设置发流地址
 			I_LOG("listen addr is {}:{}, dst addr is {}:{}", listenPoint.ip, listenPoint.port, dstPoint.ip, dstPoint.port);
@@ -239,7 +248,7 @@ namespace aom {
 		double dbTotal = 0.0;
 		int32_t timeCount = 0;
 		try {
-			swrContext = swr_alloc_set_opts(NULL,
+			SwrContext* swrContext = swr_alloc_set_opts(NULL,
 				AV_CH_LAYOUT_MONO, // 输出声道布局
 				AV_SAMPLE_FMT_S16, // 输出采样格式
 				48000,     // 输出采样率
@@ -453,6 +462,14 @@ namespace aom {
 			status << TaskStatusType::exce;
 		}
 		if (printTimer) printTimer->Cancel();
+		if (frame) {
+			av_frame_unref(frame);
+			av_frame_free(&frame);
+		}
+		if (pkt) {
+			av_packet_unref(pkt);
+			av_packet_free(&pkt);
+		}
 		I_LOG("[apc::workingLoop->{}:{}] thread is close, listen {}:{}", jobId, chnlId, listenPoint.ip, listenPoint.port);
 	}
 
