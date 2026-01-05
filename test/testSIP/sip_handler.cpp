@@ -326,7 +326,7 @@ public:
       std::cerr << "[" << username << "] 发送消息失败" << std::endl;
       return false;
     }
-
+    std::cout << "[" << username << "] 发送:\n" << message << std::endl;
     return true;
   }
 
@@ -606,7 +606,7 @@ public:
 
       if (bytesReceived > 0) {
         buffer[bytesReceived] = '\0';
-
+        std::cout << "[" << username << "] 接收:" << buffer << std::endl;
         // 判断是请求还是响应
         if (strstr(buffer, "SIP/2.0") == buffer) {
           // 这是响应（以"SIP/2.0"开头）

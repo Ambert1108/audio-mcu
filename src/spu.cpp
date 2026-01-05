@@ -1,359 +1,135 @@
 #include "SipProcesserUnit.h"
 
 namespace aom {
-  SipCall::SipCall(bool opus, Account& acc, int call_id) : Call(acc, call_id), isOpus(opus) {
-    //pj_caching_pool_init(&cp, NULL, 0);
-    //pool = pj_pool_create(&cp.factory, "answerSdp", 4096, 4096, NULL);
-    //if (!pool) {
-    //  E_LOG("create pool failed");
-    //}
-  }
-
-  SipCall::~SipCall() {
-    //if (pool) {
-    //  pj_pool_release(pool);
-    //}
-    account = nullptr;
-    W_LOG("SipCall is destruct");
-  }
-
-  void SipCall::registerSipAccount(SipAccount* val) { account = val; }
-
-  void SipCall::setId(const std::string& jobId, const std::string& chnlId) {
-    this->jobId = jobId;
-    this->chnlId = chnlId;
-  }
-
-  void SipCall::setPort(port_t val) {
-    listenPort = val;
-  }
-
-  void SipCall::onCallState(OnCallStateParam& prm) {
-    CallInfo ci = getInfo();
-    I_LOG("[SC:{}] status change: {} {} from {}", chnlId, ci.lastStatusCode, ci.lastReason, ci.remoteUri);
-    if (ci.lastStatusCode > 300) {
-      if (ci.state == PJSIP_INV_STATE_INCOMING) {
-        E_LOG("[SC:{}] send response code > 300, join meeting failed", chnlId);
-        account->setJoinErr();
-        account->closeChannel(jobId, chnlId);
-      }
-      else if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
-        E_LOG("[SC:{}] send response code > 300, destory meeting failed", chnlId);
-        account->setLeaveErr();
-      }
-    }
-    if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
-      SipRxData rdata = prm.e.body.tsxState.src.rdata;
-      if (account) {
-        account->closeChannel(rdata.wholeMsg);
-      }
-      else {
-        E_LOG("[SC:{}] SipAccount already destory, can't use closeChannel", chnlId);
-        account->setLeaveErr();
-      }
-    }
-    if (ci.lastStatusCode == PJSIP_SC_REQUEST_UPDATED) {
-      I_LOG("[SC:{}] Receive UPDATE request, start process", chnlId);
-      //std::string msg = prm.e.body.tsxState.src.rdata.wholeMsg;
-      //account->updateChannelDestition(msg);
-    }
-    //W_LOG("[DEBUG] Request:{}", prm.e.body.tsxState.src.rdata.info);
-  }
-
-  void SipCall::onCallTsxState(OnCallTsxStateParam& prm) {
-    std::string sendMsg = prm.e.body.tsxState.src.tdata.wholeMsg;
-    std::string recvMsg = prm.e.body.tsxState.src.rdata.wholeMsg;
-    if(!sendMsg.empty()) I_LOG("Send Msg\n{}", sendMsg);
-    if (!recvMsg.empty()) {
-      D_LOG("Recv Msg\n{}", recvMsg);
-      std::string method = prm.e.body.tsxState.tsx.method;
-      W_LOG("Debug: Recv Method:{}", method);
-      if (method == "UPDATE") {
-        I_LOG("[SC:{}] Receive UPDATE request, start process", chnlId);
-
-        if (!account->updateChannelDestition(recvMsg)) {
-          E_LOG("[SC] update channel {} faild", chnlId);
-        }
-      }
-    }
-  }
-
-  void SipCall::onCallSdpCreated(pj::OnCallSdpCreatedParam& prm) {
-    // 生成sdp
-    std::string newSdp;
-    auto ait = prm.sdp.wholeSdp.find("m=audio");
-    auto vit = prm.sdp.wholeSdp.find("m=video");
-    if (isOpus) {
-      newSdp =
-        "v=0\r\n"
-        "o=- 3953192465 3953192466 IN IP4 " + listenIp + "\r\n"
-        "s=pjmedia\r\n"
-        "c=IN IP4 " + listenIp + "\r\n"
-        "b=AS:84\r\n"
-        "t=0 0\r\n"
-        "a=X-nat:0\r\n"
-        "m=audio " + std::to_string(listenPort) + " RTP/AVP 96\r\n"
-        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
-        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
-        "a=rtpmap:96 opus/48000/2\r\n"
-        "a=fmtp:96 0-16\r\n"
-        "a=rtpmap:121 telephone-event/48000\r\n"
-        "a=fmtp:121 0-16\r\n"
-        "a=rtcp-fb:* ccm tmmbr\r\n";
-    }
-    else {
-      newSdp =
-        "v=0\r\n"
-        "o=- 3953192465 3953192466 IN IP4 " + listenIp + "\r\n"
-        "s=pjmedia\r\n"
-        "c=IN IP4 " + listenIp + "\r\n"
-        "b=AS:84\r\n"
-        "t=0 0\r\n"
-        "a=X-nat:0\r\n"
-        "m=audio " + std::to_string(listenPort) + " RTP/AVP 8\r\n"
-        "a=rtcp:4001 IN IP4 " + listenIp + "\r\n"
-        "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
-        "a=rtpmap:8 PCMA/8000\r\n"
-        "a=fmtp:8 0-16\r\n"
-        "a=rtpmap:121 telephone-event/8000\r\n"
-        "a=fmtp:121 0-16\r\n"
-        "a=rtcp-fb:* ccm tmmbr\r\n";
-    }
-    
-    if (ait != std::string::npos && vit != std::string::npos) {
-      // 存在audio和video
-      newSdp +=
-        "m=video 0 RTP/AVP 96\r\n"
-        "c=IN IP4 " + listenIp + "\r\n"
-        "a=rtpmap:96 H264/90000\r\n"
-        "a=fmtp:96 profile-level-id=42801F\r\n"
-        "a=rtcp-fb:96 nack pli\r\n";
-    }
-
-    prm.sdp.wholeSdp = newSdp;
-
-    D_LOG("[SC:{}] new answer sdp:\n{}", chnlId, prm.sdp.wholeSdp);
-  }
-
-  SipAccount::SipAccount() {
+  SipProcessUnit::SipProcessUnit(const std::string& user, const std::string& pass,
+    const std::string& dom, const std::string& server,
+    int sPort, const std::string& local, int lPort)
+    : username(user), password(pass), domain(dom),
+    serverIp(server), serverPort(sPort),
+    localIp(local), localPort(lPort),
+    registered(false), running(false), cseq(7343) {
+    sockfd = -1;
+    generateCallId();
+    tag = generateTag();
     mcu = MediaControlUnit::getInstance();
   }
 
-  SipAccount::~SipAccount() {
-    this->shutdown();
+  SipProcessUnit::~SipProcessUnit() {
+    stop();
+    if (sockfd != -1) {
+      close(sockfd);
+    }
     if (mcu) {
       MediaControlUnit::giveInstance(mcu);
     }
-    I_LOG("[SA:{}] destruct finish", jobId);
   }
 
-  bool SipAccount::closeChannel(const std::string& msg) {
-    std::string jobId = extractJobId(msg);
-
-    std::regex pattern("audio(\\d{6})");
-    std::smatch match;
-    if (std::regex_match(jobId, match, pattern)) {
-      jobId = match[1];
-    }
-    else {
-      E_LOG("[SA::closeChannel] match {} failed!", jobId);
-      mcu->setLeaveErr();
+  bool SipProcessUnit::start() {
+    if (!initializeSocket()) {
       return false;
     }
-    std::string chnlId = extractChnlId(msg);
-    I_LOG("[SA:{}] start remove channel {}", jobId, chnlId);
-    RemoveChnlContext ctx(jobId, chnlId);
-    mcu->removeChnl(ctx);
-    W_LOG("[SA:{}] remove step: remove channel {} finish", jobId, chnlId);
 
-    {
-      std::lock_guard<std::mutex> lck(listLocker);
-      auto it = callList.find(chnlId);
-      if (it == callList.end()) {
-        E_LOG("find channel {} in call list failed", chnlId);
-        return false;
-      }
-      it->second.reset();
-      callList.erase(it);
-    }
-    I_LOG("[SA:{}] remove step: remove call {} finish", jobId, chnlId);
+    running = true;
+    registered = false;
 
+    // 启动接收线程
+    receiveThread = std::thread(&SipProcessUnit::receiveLoop, this);
+
+    // 启动注册线程
+    registerThread = std::thread(&SipProcessUnit::registerLoop, this);
+    W_LOG("Account {} is started", username);
+    receiveThread.join();
     return true;
   }
 
-  bool SipAccount::closeChannel(const std::string& jobId, const std::string& chnlId) {
-    I_LOG("[SA:{}] start remove channel {}", jobId, chnlId);
-    RemoveChnlContext ctx(jobId, chnlId);
-    mcu->removeChnl(ctx);
-    W_LOG("[SA:{}] remove step: remove channel {} finish", jobId, chnlId);
+  void SipProcessUnit::stop() {
+    W_LOG("Account {} is stoping", username);
 
-    {
-      std::lock_guard<std::mutex> lck(listLocker);
-      auto it = callList.find(chnlId);
-      if (it == callList.end()) {
-        E_LOG("find channel {} in call list failed", chnlId);
-        return false;
-      }
-      it->second.reset();
-      callList.erase(it);
-    }
-    I_LOG("[SA:{}] remove step: remove call {} finish", jobId, chnlId);
+    running = false;
 
-    return true;
-  }
-
-  bool SipAccount::updateChannelDestition(const std::string& msg) {
-    std::string jobId = extractJobId(msg);
-
-    std::regex pattern("audio(\\d{6})");
-    std::smatch match;
-    if (std::regex_match(jobId, match, pattern)) {
-      jobId = match[1];
-    }
-    std::string chnlId = extractChnlId(msg);
-    I_LOG("[SA:{}->{}]start update channel destition", jobId, chnlId);
-
-    SDPInfo info;
-    parseSDP(msg, info);
-    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}, opus is {}",
-      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate, info.isOpus);
-
-    UpdateContext ctx(jobId, chnlId, info.ip, info.port);
-    if (info.isOpus) {
-      ctx.codecType = 2;
-    }
-    else {
-      ctx.codecType = 1;
+    if (receiveThread.joinable()) {
+      receiveThread.join();
     }
 
-    if (!mcu->updateDestition(ctx)) {
-      return false;
+    if (registerThread.joinable()) {
+      registerThread.join();
     }
-    return true;
+
+    W_LOG("Account {} is stoped", username);
   }
 
-  void SipAccount::setRemoveCallListCallback(RemoveCallList func) {
-    callback = func;
+  std::string SipProcessUnit::getInfo() const {
+    std::stringstream ss;
+    ss << "user: " << username << "\n"
+      << "domain " << domain << "\n"
+      << "server: " << serverIp << ":" << serverPort << "\n"
+      << "local bind: " << localIp << ":" << localPort << "\n"
+      << "register status: " << (registered ? "yes" : "no");
+    return ss.str();
   }
 
-  void SipAccount::setUnregistering(bool val) {
-    isUnregistering = val;
+  void SipProcessUnit::generateCallId() {
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0') << std::setw(8)
+      << (rand() & 0xFFFFFFFF) << "@" << domain;
+    callId = ss.str();
   }
 
-  void SipAccount::setJoinErr() {
-    mcu->setJoinErr();
+  std::string SipProcessUnit::generateBranch() {
+    std::stringstream ss;
+    ss << "z9hG4bK" << std::hex << std::setfill('0') << std::setw(8)
+      << (rand() & 0xFFFFFFFF);
+    branch = ss.str();
+    return branch;
   }
 
-  void SipAccount::setLeaveErr() {
-    mcu->setLeaveErr();
+  std::string SipProcessUnit::generateTag() {
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0') << std::setw(16)
+      << (rand() & 0xFFFFFFFF) << (rand() & 0xFFFFFFFF);
+    return ss.str();
   }
 
-  void SipAccount::onRegState(OnRegStateParam& prm) {
-    AccountInfo ai = getInfo();
-    if (ai.regIsActive) {
-      jobId = extractJobId("To: " + ai.uri);
-      I_LOG("[SA:{}] register {} success, code={}, reason={}", jobId, ai.uri, prm.code, prm.reason);
-    }
-    else {
-      if (isUnregistering) {
-        if (prm.code >= 200 && prm.code < 300) {
-          I_LOG("[SA:{}] receive unregister {}, reason={}", jobId, ai.uri, prm.reason);
-          isUnregistering = false;
-          callback(jobId);
-        }
-        else {
-          I_LOG("[SA:{}] unregister {} failed, reason={}", jobId, ai.uri, prm.reason);
+  std::string SipProcessUnit::extractHeader(const std::string& message, const std::string& headerName) {
+    std::istringstream stream(message);
+    std::string line;
+
+    while (std::getline(stream, line)) {
+      if (line.find(headerName) == 0) {
+        size_t colonPos = line.find(':');
+        if (colonPos != std::string::npos) {
+          std::string value = line.substr(colonPos + 1);
+          size_t start = value.find_first_not_of(" \t\r");
+          if (start != std::string::npos) {
+            size_t end = value.find_last_not_of("\r");
+            return value.substr(start, end - start + 1);
+          }
         }
       }
-      else E_LOG("[SA:{}] register {} failed, code={}, reason={}", jobId, ai.uri, prm.code, prm.reason);
     }
+    return "";
   }
 
-  void SipAccount::onIncomingCall(OnIncomingCallParam& iprm) {
-    std::string msg = iprm.rdata.wholeMsg;
-    D_LOG("Receive Call \n{}", msg);
-   /* if (!this->isValid() || this->isDefault()) {
-      E_LOG("[SA] Account not valid, rejecting call");
-      return;
-    }*/
-
-    //取出INVITE中的From作为channelId
-    std::string jobId = extractJobId(msg);
-
-    std::regex pattern("audio(\\d{6})");
-    std::smatch match;
-    if (std::regex_match(jobId, match, pattern)) {
-      jobId = match[1];
+  std::string SipProcessUnit::extractMessageBody(const std::string& message) {
+    size_t body_start = message.find("\r\n\r\n");
+    if (body_start != std::string::npos) {
+      return message.substr(body_start + 4); // 跳过两个CRLF
     }
-    else {
-      E_LOG("[SA::onIncomingCall] match {} failed!", jobId);
-      mcu->setJoinErr();
-      return;
-    }
-
-    if (!mcu->checkJob(jobId)) {
-      E_LOG("[SA::onIncomingCall] jobId {} not found", jobId);
-      mcu->setJoinErr();
-      return;
-    }
-
-    std::string chnlId = extractChnlId(msg);
-    I_LOG("[SA::onIncomingCall] get jobId {} and chnlId {}", jobId, chnlId);
-    std::string dstIp;
-    int dstPort;
-    //取出INVITE中的SDP
-    //在SDP中取出payloadType、codecType、inSampleRate、outSampleRate、dstIp、dstPort
-    SDPInfo info;
-    parseSDP(msg, info);
-    I_LOG("[SA:{}->{}] get dst ip is {}, port is {}, pt is {}, samplerate is {}, opus is {}",
-      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate, info.isOpus);
-    AddChnlContext addCtx;
-    ListenAddr addr;
-    addCtx.jobId = jobId;
-    addCtx.chnlId = chnlId;
-    addCtx.dstIp = info.ip;
-    addCtx.dstPort = info.port;
-    if (info.isOpus) {
-      addCtx.codecType = 2;
-      addCtx.payloadType = info.payloadType;
-      addCtx.inSampleRate = info.sampleRate;
-      addCtx.outSampleRate = info.sampleRate;
-    }
-    else {
-      //PCMA
-      addCtx.codecType = 1;
-      addCtx.payloadType = 8;
-      addCtx.inSampleRate = 8000;
-      addCtx.outSampleRate = 8000;
-    }
-
-    auto call = std::make_unique<SipCall>(info.isOpus, *this, iprm.callId);
-    call->registerSipAccount(this);
-    call->setId(jobId, chnlId);
-    CallInfo ci = call->getInfo();
-    I_LOG("debug: call last status code is {}", ci.lastStatusCode);
-    CallOpParam answer_prm;
-    answer_prm.statusCode = PJSIP_SC_RINGING;
-    call->answer(answer_prm);
-
-    if (!mcu->addChnl(addCtx, addr)) {
-      E_LOG("[SA:{}->{}] add channel faild", jobId, chnlId);
-      answer_prm.statusCode = PJSIP_SC_BAD_REQUEST;
-      call->answer(answer_prm);
-      return;
-    }
-    MicCtrlContext ctx;
-    ctx.jobId = jobId;
-    ctx.channelId = chnlId;
-    mcu->openMic(ctx);
-    call->setPort(addr.port);
-    answer_prm.statusCode = PJSIP_SC_OK;
-    call->answer(answer_prm);
-    std::lock_guard<std::mutex> lck(listLocker);
-    callList.emplace(chnlId, std::move(call));
+    return "";
   }
 
-  std::string SipAccount::extractChnlId(const std::string& wholeMsg) {
+  std::string SipProcessUnit::extractFromTag(const std::string& fromHeader) {
+    size_t tagPos = fromHeader.find("tag=");
+    if (tagPos != std::string::npos) {
+      size_t start = tagPos + 4;
+      size_t end = fromHeader.find(';', start);
+      if (end == std::string::npos) end = fromHeader.length();
+      return fromHeader.substr(start, end - start);
+    }
+    return "";
+  }
+
+  std::string SipProcessUnit::extractChnlId(const std::string& wholeMsg) {
     // 查找 "From:" 行
     size_t fromPos = wholeMsg.find("From:");
     if (fromPos == std::string::npos) {
@@ -381,7 +157,7 @@ namespace aom {
     return username;
   }
 
-  std::string SipAccount::extractJobId(const std::string& wholeMsg) {
+  std::string SipProcessUnit::extractJobId(const std::string& wholeMsg) {
     // 查找 "To:" 行
     size_t toPos = wholeMsg.find("To:");
     if (toPos == std::string::npos) {
@@ -409,7 +185,7 @@ namespace aom {
     return username;
   }
 
-  void SipAccount::parseSDP(const std::string& wholeMsg, SDPInfo& info) {
+  void SipProcessUnit::parseSDP(const std::string& wholeMsg, SDPInfo& info) {
     size_t sdp_start = wholeMsg.find("\r\n\r\n");
     if (sdp_start == std::string::npos) {
       E_LOG("find sdp failed");
@@ -485,148 +261,503 @@ namespace aom {
     }
   }
 
-  SipProcessUnit::SipProcessUnit(std::string targetIp, port_t targetPort)
-  : ip(targetIp), port(targetPort) {
-    fn = std::bind(&SipProcessUnit::removeCallFromList, this, std::placeholders::_1);
-  }
-
-  SipProcessUnit::~SipProcessUnit() {
-    this->shutdown();
-    MediaControlUnit::giveInstance(mcu);
-    acList.clear();
-    ep.libDestroy();
-  }
-
-  void SipProcessUnit::open() {
-    ep.libCreate();
-    pj::EpConfig epCfg;
-    epCfg.uaConfig.maxCalls = 64;
-    epCfg.logConfig.level = 4;
-    epCfg.medConfig.maxMediaPorts = 5000;
-    //epCfg.logConfig.writer = &logger;
-    ep.libInit(epCfg);
-
-    pj_status_t status = pjsua_set_null_snd_dev();
-    if (status != PJ_SUCCESS) {
-      I_LOG("close audio dev failed:{}", status);
-      ep.libDestroy();
-      return;
+  bool SipProcessUnit::initializeSocket() {
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+      E_LOG("sip mode: create socket failed");
+      return false;
     }
 
-    tcfg.port = sipPort;
-    ep.transportCreate(PJSIP_TRANSPORT_UDP, tcfg);
-    I_LOG("UDP transport create success, port is {}", tcfg.port);
-
-    ep.libStart();
-    I_LOG("start PJSUA2 module");
-
-    mcuAcCfg.idUri = "sip:" + user + "@" + ip + ":" + std::to_string(port);
-    mcuAcCfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
-    mcuCred = AuthCredInfo("digest", "*", user, 0, pwd);
-    mcuAcCfg.sipConfig.authCreds.push_back(mcuCred);
-    mcuAcCfg.callConfig.timerMinSESec = 90;
-    mcuAcCfg.callConfig.timerSessExpiresSec = 1800;
-    create(mcuAcCfg, true);
-    I_LOG("Sip Process Unit Register uri sip:{}@{}:{}", user, ip, port);
-    mcu = MediaControlUnit::getInstance();
-    isRunning = true;
-    run();
-  }
-
-  void SipProcessUnit::run() {
-    I_LOG("Sip Process Unit Start listen");
-
-    while (isRunning) {
-      ep.libHandleEvents(100);
+    // 设置地址重用
+    int opt = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+      E_LOG("sip mode: setting socket option failed");
+      close(sockfd);
+      return false;
     }
 
-    E_LOG("Sip Process Unit listen Failed");
-  }
+    // 绑定到本地IP和端口
+    struct sockaddr_in localAddr;
+    memset(&localAddr, 0, sizeof(localAddr));
+    localAddr.sin_family = AF_INET;
 
-  void SipProcessUnit::registerAccount(std::string userName) {
-    AccountConfig acfg;
-    acfg.idUri = "sip:" + userName + "@" + ip + ":" + std::to_string(port);
-    acfg.regConfig.registrarUri = "sip:" + ip + ":" + std::to_string(port);
-    AuthCredInfo cred("digest", "*", userName, 0, pwd);
-    acfg.sipConfig.authCreds.push_back(cred);
-    acfg.mediaConfig.useLoopMedTp = true;
-    acfg.mediaConfig.enableLoopback = true;
-    std::unique_ptr<SipAccount> acc = std::make_unique<SipAccount>();
-    acc->create(acfg);
-    acc->setRemoveCallListCallback(fn);
-    acList.emplace(userName, std::move(acc));
-    W_LOG("[SPU] register {} success", userName);
-  }
-
-  void SipProcessUnit::unregisterAccount(std::string userName) {
-    std::string id = "audio" + userName.substr(5);
-    auto it = acList.find(id);
-    if (it == acList.end()) {
-      E_LOG("[SPU] find {} from account list failed", id);
-      return;
+    if (inet_pton(AF_INET, localIp.c_str(), &localAddr.sin_addr) <= 0) {
+      E_LOG("sip mode: invaild local ip {}", localIp);
+      close(sockfd);
+      return false;
     }
-    it->second->setRegistration(false);
-    it->second->setUnregistering(true);
-    I_LOG("[SPU] unregister {} start", userName);
+
+    localAddr.sin_port = htons(localPort);
+
+    if (bind(sockfd, (struct sockaddr*)&localAddr, sizeof(localAddr)) < 0) {
+      E_LOG("sip mode: bind {}:{} failed", localIp, localPort);
+      close(sockfd);
+      return false;
+    }
+
+
+    W_LOG("sip mode: bind {}:{} success", localIp, localPort);
+    return true;
   }
 
-  void SipProcessUnit::removeCallFromList(std::string userName) {
-    std::string id = "audio" + userName.substr(5);
-    auto it = acList.find(id);
-    if (it == acList.end()) {
-      E_LOG("[SPU] find {} from account list failed", id);
-      return;
-    }
-    acList.erase(id);
-    W_LOG("[SPU] unregister {} success", userName);
+  std::string SipProcessUnit::constructRegisterRequest() {
+    std::stringstream request;
 
-    unsigned activePorts = pjsua_conf_get_active_ports();
-    unsigned maxPorts = pjsua_conf_get_max_ports();
-    I_LOG("=== 系统资源状态 === ");
-    I_LOG("会议桥端口: {}/{}", activePorts, maxPorts);
-    I_LOG("==================");
+    generateBranch();
+
+    // SIP REGISTER 请求行
+    request << "REGISTER sip:" << domain << ":" << serverPort << " SIP/2.0\r\n";
+
+    // Via头部
+    request << "Via: SIP/2.0/UDP " << localIp << ":" << localPort
+      << ";branch=" << branch << ";rport\r\n";
+
+    // From头部
+    request << "From: <sip:" << username << "@" << domain << ">;tag=" << generateTag() << "\r\n";
+
+    // To头部
+    request << "To: <sip:" << username << "@" << domain << ">\r\n";
+
+    // Call-ID头部
+    request << "Call-ID: " << callId << "\r\n";
+
+    // CSeq头部
+    request << "CSeq: " << cseq++ << " REGISTER\r\n";
+
+    // Max-Forwards
+    request << "Max-Forwards: 70\r\n";
+
+    // User-Agent
+    request << "Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS\r\n";
+
+    // Expires（注册有效期，单位秒）
+    request << "Expires: 300\r\n";  // 5分钟
+
+    // Contact
+    request << "Contact: <sip:" << username << "@" << localIp << ":" << localPort << ">;ob\r\n";
+
+    // Content-Length
+    request << "Content-Length: 0\r\n";
+    request << "\r\n";
+
+    return request.str();
   }
-  
-  void SipProcessUnit::onRegState(OnRegStateParam& prm) {
-    AccountInfo ai = getInfo();
-    if (ai.regIsActive) {
-      I_LOG("[SPU] Register MCU Account:{} success, code={}, reason={}", ai.uri, prm.code, prm.reason);
+
+  std::string SipProcessUnit::constructSIPResponse(const std::string& statusLine,
+    const std::string& via,
+    const std::string& from,
+    const std::string& to,
+    const std::string& callId,
+    int cseq,
+    const std::string& method,
+    const std::string& toTag) {
+    std::stringstream response;
+
+    response << statusLine << "\r\n";
+    response << "Via: " << via << "\r\n";
+    response << "From: " << from << "\r\n";
+
+    // To头，如果需要添加tag
+    std::string toHeader = to;
+    if (!toTag.empty() && toHeader.find("tag=") == std::string::npos) {
+      toHeader += ";tag=" + toTag;
     }
-    else {
-      E_LOG("[SPU] Register MCU Account:{} failed, code={}, reason={}", ai.uri, prm.code, prm.reason);
-    }
+    response << "To: " << toHeader << "\r\n";
+
+    response << "Call-ID: " << callId << "\r\n";
+    response << "CSeq: " << cseq << " " << method << "\r\n";
+    response << "Content-Length: 0\r\n";
+    response << "\r\n";
+
+    return response.str();
   }
 
-  void SipProcessUnit::onInstantMessage(OnInstantMessageParam& prm) {
-    I_LOG("Recv Msg\n{}", prm.msgBody);
+  std::string SipProcessUnit::constructSIPResponseWithSDP(const std::string& statusLine,
+    const std::string& via,
+    const std::string& from,
+    const std::string& to,
+    const std::string& callId,
+    int cseq,
+    const std::string& toTag,
+    const std::string& sdp) {
+    std::stringstream response;
 
-    std::string userName = prm.msgBody;
+    response << statusLine << "\r\n";
+    response << "Via: " << via << "\r\n";
+    response << "From: " << from << "\r\n";
+
+    // To头，如果需要添加tag
+    std::string toHeader = to;
+    if (!toTag.empty() && toHeader.find("tag=") == std::string::npos) {
+      toHeader += ";tag=" + toTag;
+    }
+    response << "To: " << toHeader << "\r\n";
+
+    response << "Call-ID: " << callId << "\r\n";
+    response << "CSeq: " << cseq << " INVITE\r\n";
+
+    // SDP相关头部
+    response << "Content-Type: application/sdp\r\n";
+    response << "Content-Length: " << sdp.length() << "\r\n";
+    response << "\r\n";
+    response << sdp;
+
+    return response.str();
+  }
+
+  bool SipProcessUnit::sendMessage(const std::string& message, const struct sockaddr_in& destAddr) {
+    std::lock_guard<std::mutex> lock(socketMutex);
+
+    ssize_t sent = sendto(sockfd, message.c_str(), message.length(), 0,
+      (struct sockaddr*)&destAddr, sizeof(destAddr));
+
+    if (sent < 0) {
+      E_LOG("sip mode: send sip message failed");
+      return false;
+    }
+    I_LOG("send:\n{}", message);
+    return true;
+  }
+
+  bool SipProcessUnit::sendSIPResponse(const std::string& statusLine,
+    const std::string& via,
+    const std::string& from,
+    const std::string& to,
+    const std::string& callId,
+    int cseq,
+    const std::string& method,
+    const struct sockaddr_in& destAddr,
+    const std::string& toTag) {
+
+    std::string response = constructSIPResponse(statusLine, via, from, to,
+      callId, cseq, method, toTag);
+
+    return sendMessage(response, destAddr);
+  }
+
+  bool SipProcessUnit::sendSIPResponseWithSDP(const std::string& statusLine,
+    const std::string& via,
+    const std::string& from,
+    const std::string& to,
+    const std::string& callId,
+    int cseq,
+    const struct sockaddr_in& destAddr,
+    const std::string& toTag,
+    const std::string& sdp) {
+    std::string response = constructSIPResponseWithSDP(statusLine, via, from, to,
+      callId, cseq, toTag, sdp);
+
+    return sendMessage(response, destAddr);
+  }
+
+  bool SipProcessUnit::sendRegisterRequest() {
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(serverPort);
+
+    if (inet_pton(AF_INET, serverIp.c_str(), &serverAddr.sin_addr) <= 0) {
+      E_LOG("sip mode: invaild server ip {}", serverIp);
+      return false;
+    }
+
+    std::string request = constructRegisterRequest();
+
+    return sendMessage(request, serverAddr);
+  }
+
+  void SipProcessUnit::handleMESSAGE(const std::string& request, struct sockaddr_in& fromAddr) {
+    // 提取必要头部
+    std::string callId = extractHeader(request, "Call-ID");
+    std::string from = extractHeader(request, "From");
+    std::string to = extractHeader(request, "To");
+    std::string cseqStr = extractHeader(request, "CSeq");
+    std::string via = extractHeader(request, "Via");
+
+    int cseq = 1;
+    if (!cseqStr.empty()) {
+      cseq = std::stoi(cseqStr.substr(0, cseqStr.find(' ')));
+    }
+
+    // 构建200 OK响应
+    sendSIPResponse("SIP/2.0 200 OK", via, from, to, callId, cseq, "MESSAGE", fromAddr, tag);
+
+    std::string message_body = extractMessageBody(request);
+    std::string userName = message_body;
     if (userName.size() > 11) {
       userName = userName.substr(userName.length() - 11, 11);
     }
-    std::regex pattern("audio(\\d{6})");
+    std::regex pattern1("audio\\d{6}");
     std::regex pattern2("close(\\d{6})");
-    std::smatch match, match2;
-
-    if (std::regex_match(userName, match, pattern)) {
-      unsigned activePorts = pjsua_conf_get_active_ports();
-      unsigned maxPorts = pjsua_conf_get_max_ports();
-      I_LOG("=== 系统资源状态 === ");
-      I_LOG("会议桥端口: {}/{}", activePorts, maxPorts);
-      I_LOG("==================");
-      registerAccount(userName);
+    std::smatch matches;
+    if (std::regex_match(message_body, matches, pattern1)) {
       CreateJobContext createCtx;
-      createCtx.jobId = match[1];
+      createCtx.jobId = matches[1];
       createCtx.url = "empty";
+      I_LOG("debug: create mpu");
       mcu->createMpu(createCtx);
     }
-    else if (std::regex_match(userName, match2, pattern2)) {
-      unregisterAccount(userName);
-      std::string jobId = match2[1];
+    else if (std::regex_match(message_body, matches, pattern2)) {
+      std::string jobId = matches[1];
+      I_LOG("debug: end mpu");
       mcu->endMpu(jobId);
     }
     else {
-      W_LOG("[SPU] jobId {} regex failed", userName);
+      E_LOG("sip mode: match message {} failed", message_body);
+    }
+  }
+
+  void SipProcessUnit::handleINVITE(const std::string& request, struct sockaddr_in& fromAddr) {
+    std::lock_guard<std::mutex> lock(callMutex);
+
+    // 提取头部信息
+    std::string via = extractHeader(request, "Via");
+    std::string from = extractHeader(request, "From");
+    std::string to = extractHeader(request, "To");
+    std::string callId = extractHeader(request, "Call-ID");
+    std::string cseqStr = extractHeader(request, "CSeq");
+    int cseq = std::stoi(cseqStr.substr(0, cseqStr.find(' ')));
+
+    // 发送100 Trying
+    sendSIPResponse("SIP/2.0 100 Trying", via, from, to, callId, cseq, "INVITE", fromAddr);
+
+    std::string jobId = extractJobId(request);
+
+    std::regex pattern("audio(\\d{6})");
+    std::smatch match;
+    if (std::regex_match(jobId, match, pattern)) {
+      jobId = match[1];
+    }
+    else {
+      E_LOG("sip mode: match {} failed!", jobId);
+      mcu->setJoinErr();
+      return;
+    }
+
+    if (!mcu->checkJob(jobId)) {
+      E_LOG("sip mode: jobId {} not found", jobId);
+      mcu->setJoinErr();
+      return;
+    }
+
+    //取出INVITE中的From作为channelId
+    std::string chnlId = extractChnlId(request);
+    I_LOG("sip mode: jobId:{}, chnlId:{}", jobId, chnlId);
+
+    //在SDP中取出payloadType、codecType、inSampleRate、outSampleRate、dstIp、dstPort
+    SDPInfo info;
+    parseSDP(request, info);
+    I_LOG("sip mode: jobId={} chnlId={} dstIp={} dstPort={} pt={} samplerate={} opus={}",
+      jobId, chnlId, info.ip, info.port, info.payloadType, info.sampleRate, info.isOpus);
+    AddChnlContext addCtx;
+    ListenAddr addr;
+    addCtx.jobId = jobId;
+    addCtx.chnlId = chnlId;
+    addCtx.dstIp = info.ip;
+    addCtx.dstPort = info.port;
+    if (info.isOpus) {
+      addCtx.codecType = 2;
+      addCtx.payloadType = info.payloadType;
+      addCtx.inSampleRate = info.sampleRate;
+      addCtx.outSampleRate = info.sampleRate;
+    }
+    else {
+      //PCMA
+      addCtx.codecType = 1;
+      addCtx.payloadType = 8;
+      addCtx.inSampleRate = 8000;
+      addCtx.outSampleRate = 8000;
+    }
+
+    sendSIPResponse("SIP/2.0 180 Ringing", via, from, to, callId, cseq, "INVITE", fromAddr);
+
+    if (!mcu->addChnl(addCtx, addr)) {
+      E_LOG("sip mode: jobId={} add channel {} faild", jobId, chnlId);
+
+      return;
+    }
+    MicCtrlContext ctx;
+    ctx.jobId = jobId;
+    ctx.channelId = chnlId;
+    mcu->openMic(ctx);
+
+    std::string sdp =
+      "v=0\r\n"
+      "o=- 3953192465 3953192466 IN IP4 " + addr.ip + "\r\n"
+      "s=pjmedia\r\n"
+      "c=IN IP4 " + addr.ip + "\r\n"
+      "b=AS:84\r\n"
+      "t=0 0\r\n"
+      "a=X-nat:0\r\n"
+      "m=audio " + std::to_string(addr.port) + " RTP/AVP 8\r\n"
+      "a=rtcp:4001 IN IP4 " + addr.ip + "\r\n"
+      "a=ssrc:766044304 cname:7b8072591a0e9c5a\r\n"
+      "a=rtpmap:8 PCMA/8000\r\n"
+      "a=fmtp:8 0-16\r\n"
+      "a=rtpmap:121 telephone-event/8000\r\n"
+      "a=fmtp:121 0-16\r\n"
+      "a=rtcp-fb:* ccm tmmbr\r\n"
+      "m=video 0 RTP/AVP 96\r\n"
+      "c=IN IP4 " + addr.ip + "\r\n"
+      "a=rtpmap:96 H264/90000\r\n"
+      "a=fmtp:96 profile-level-id=42801F\r\n"
+      "a=rtcp-fb:96 nack pli\r\n";
+
+    sendSIPResponseWithSDP("SIP/2.0 200 OK", via, from, to, callId, cseq, fromAddr, tag, sdp);
+  }
+
+  void SipProcessUnit::handleACK(const std::string& request, struct sockaddr_in& fromAddr) {
+    std::string jobId = extractJobId(request);
+
+    std::regex pattern("audio(\\d{6})");
+    std::smatch match;
+    if (std::regex_match(jobId, match, pattern)) {
+      jobId = match[1];
+    }
+    else {
+      E_LOG("sip mode: match {} failed!", jobId);
+      mcu->setJoinErr();
+      return;
+    }
+
+    if (!mcu->checkJob(jobId)) {
+      E_LOG("sip mode: jobId {} not found", jobId);
+      mcu->setJoinErr();
+      return;
+    }
+
+    //取出INVITE中的From作为channelId
+    std::string chnlId = extractChnlId(request);
+    I_LOG("sip mode: session is make up, jobId={}, chnlId={}", jobId, chnlId);
+  }
+
+  void SipProcessUnit::handleBYE(const std::string& request, struct sockaddr_in& fromAddr) {
+    std::lock_guard<std::mutex> lock(callMutex);
+
+    // 提取头部信息
+    std::string callId = extractHeader(request, "Call-ID");
+    std::string via = extractHeader(request, "Via");
+    std::string from = extractHeader(request, "From");
+    std::string to = extractHeader(request, "To");
+    std::string cseqStr = extractHeader(request, "CSeq");
+    int cseq = std::stoi(cseqStr.substr(0, cseqStr.find(' ')));
+
+    // 发送200 OK响应
+    sendSIPResponse("SIP/2.0 200 OK", via, from, to, callId, cseq, "BYE", fromAddr, tag);
+
+    std::string jobId = extractJobId(to);
+
+    std::regex pattern("audio(\\d{6})");
+    std::smatch match;
+    if (std::regex_match(jobId, match, pattern)) {
+      jobId = match[1];
+    }
+    else {
+      E_LOG("sip mode: match {} failed!", jobId);
+      mcu->setLeaveErr();
+      return;
+    }
+    std::string chnlId = extractChnlId(from);
+    I_LOG("sip mode: jobId={} start remove chnlId={}", jobId, chnlId);
+    RemoveChnlContext ctx(jobId, chnlId);
+    mcu->removeChnl(ctx);
+
+    I_LOG("sip mode: session is call dump, jobId={}, chnlId={}", jobId, chnlId);
+  }
+
+  void SipProcessUnit::handleSIPResponse(const std::string& response, struct sockaddr_in& fromAddr) {
+    // 检查是否为REGISTER的响应
+    if (response.find("SIP/2.0 200 OK") == 0) {
+      std::string cseq = extractHeader(response, "CSeq");
+      if (cseq.find("REGISTER") != std::string::npos) {
+        I_LOG("sip mode: register success");
+        registered = true;
+      }
+    }
+    else if (response.find("SIP/2.0 401 Unauthorized") == 0) {
+      W_LOG("sip mode: need authorized");
+      // 这里可以添加认证逻辑
+    }
+  }
+
+  void SipProcessUnit::handleSIPRequest(const std::string& request, struct sockaddr_in& fromAddr) {
+    // 提取请求方法
+    size_t firstSpace = request.find(' ');
+    if (firstSpace == std::string::npos) return;
+
+    std::string method = request.substr(0, firstSpace);
+
+    if (method == "INVITE") {
+      handleINVITE(request, fromAddr);
+    }
+    else if (method == "ACK") {
+      handleACK(request, fromAddr);
+    }
+    else if (method == "BYE") {
+      handleBYE(request, fromAddr);
+    }
+    else if (method == "MESSAGE") {
+      handleMESSAGE(request, fromAddr);
+    }
+    else {
+      W_LOG("sip mode: {} method is not support", method);
+    }
+  }
+
+  void SipProcessUnit::receiveLoop() {
+    char buffer[4096];
+    struct sockaddr_in clientAddr;
+    socklen_t clientLen = sizeof(clientAddr);
+
+    I_LOG("sip mode: receive loop is start working");
+    while (running) {
+      memset(buffer, 0, sizeof(buffer));
+      memset(&clientAddr, 0, sizeof(clientAddr));
+
+      // 设置接收超时（1秒），以便可以检查running标志
+      struct timeval tv;
+      tv.tv_sec = 1;
+      tv.tv_usec = 0;
+      setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+      ssize_t bytesReceived = recvfrom(sockfd, buffer, sizeof(buffer) - 1, 0,
+        (struct sockaddr*)&clientAddr, &clientLen);
+
+      if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        I_LOG("receive:\n{}", buffer);
+        // 判断是请求还是响应
+        if (strstr(buffer, "SIP/2.0") == buffer) {
+          // 这是响应（以"SIP/2.0"开头）
+          handleSIPResponse(buffer, clientAddr);
+        }
+        else {
+          // 这是请求
+          handleSIPRequest(buffer, clientAddr);
+        }
+      }
+      else if (bytesReceived < 0) {
+        // 超时或其他错误，继续循环
+        continue;
+      }
+    }
+  }
+
+  void SipProcessUnit::registerLoop() {
+    // 初始等待1秒，让接收线程先启动
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    I_LOG("sip mode: register keep loop is start working");
+
+    while (running) {
+      if (!sendRegisterRequest()) {
+        E_LOG("sip mode: send request REGISTER failed!");
+      }
+
+      // 等待5分钟（300秒）
+      for (int i = 0; i < 300 && running; i++) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+      }
     }
   }
 }

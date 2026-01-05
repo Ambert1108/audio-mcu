@@ -79,20 +79,24 @@ int main(int argc, char* argv[]) {
 			}
 		}
 		else {
+			std::string localIp = config::Get("main", "sip_ip", "127.0.0.1");
+			port_t localPort = seeker::IniConfig::GetInteger("main", "sip_port", 54325);
+			std::string user = seeker::IniConfig::Get("main", "user", "faust");
+			std::string pwd = seeker::IniConfig::Get("main", "pwd", "123456");
 			std::string ip = config::Get("main", "ip", "0.0.0.0");
-			port_t port = config::GetInteger("main", "port", 5060);
+			port_t serverPort = config::GetInteger("main", "port", 5060);
 			if (ip.empty()) {
 				E_LOG("[boot::Error] sipServer.host=[{}]", ip);
 				exit(-1);
 			}
 
-			if (port < 1024) {
-				E_LOG("[boot::Error] sipServer.binding_port=[{}]", port);
+			if (serverPort < 1024) {
+				E_LOG("[boot::Error] sipServer.binding_port=[{}]", serverPort);
 				exit(-1);
 			}
-			std::unique_ptr<SipProcessUnit> spu = std::make_unique<SipProcessUnit>(ip, port);
-			spu->open();
-			spu->shutdown();
+			std::unique_ptr<SipProcessUnit> spu = std::make_unique<SipProcessUnit>(user, pwd, ip, ip, serverPort, localIp, localPort);
+			spu->start();
+			spu->stop();
 			spu.reset();
 		}
 		
