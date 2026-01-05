@@ -487,23 +487,24 @@ namespace aom {
     if (userName.size() > 11) {
       userName = userName.substr(userName.length() - 11, 11);
     }
-    std::regex pattern1("audio\\d{6}");
+    std::regex pattern1("audio(\\d{6})");
     std::regex pattern2("close(\\d{6})");
     std::smatch matches;
-    if (std::regex_match(message_body, matches, pattern1)) {
+    I_LOG("message_body={}, userName={}", message_body, userName);
+    if (std::regex_match(userName, matches, pattern1)) {
       CreateJobContext createCtx;
       createCtx.jobId = matches[1];
       createCtx.url = "empty";
-      I_LOG("debug: create mpu");
+      I_LOG("debug: create mpu, jobId={}", createCtx.jobId);
       mcu->createMpu(createCtx);
     }
-    else if (std::regex_match(message_body, matches, pattern2)) {
+    else if (std::regex_match(userName, matches, pattern2)) {
       std::string jobId = matches[1];
       I_LOG("debug: end mpu");
       mcu->endMpu(jobId);
     }
     else {
-      E_LOG("sip mode: match message {} failed", message_body);
+      E_LOG("sip mode: match message {} failed", userName);
     }
   }
 
@@ -542,7 +543,6 @@ namespace aom {
 
     //取出INVITE中的From作为channelId
     std::string chnlId = extractChnlId(request);
-    I_LOG("sip mode: jobId:{}, chnlId:{}", jobId, chnlId);
 
     //在SDP中取出payloadType、codecType、inSampleRate、outSampleRate、dstIp、dstPort
     SDPInfo info;
@@ -645,7 +645,7 @@ namespace aom {
     // 发送200 OK响应
     sendSIPResponse("SIP/2.0 200 OK", via, from, to, callId, cseq, "BYE", fromAddr, tag);
 
-    std::string jobId = extractJobId(to);
+    std::string jobId = extractJobId(request);
 
     std::regex pattern("audio(\\d{6})");
     std::smatch match;
@@ -657,7 +657,7 @@ namespace aom {
       mcu->setLeaveErr();
       return;
     }
-    std::string chnlId = extractChnlId(from);
+    std::string chnlId = extractChnlId(request);
     I_LOG("sip mode: jobId={} start remove chnlId={}", jobId, chnlId);
     RemoveChnlContext ctx(jobId, chnlId);
     mcu->removeChnl(ctx);
