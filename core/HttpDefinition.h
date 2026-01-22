@@ -13,7 +13,9 @@ namespace aom {
 	constexpr auto CLOSE_MIRCO_URL       =   "/audioMcu/closeMic";
 	constexpr auto REMOVE_CHANNEL_URL    =   "/audioMcu/removeChnl";
 	constexpr auto END_JOB_URL           =   "/audioMcu/endJob";
-	constexpr auto KEEP_URL							 =	 "/audioMcu/getInfo";
+	constexpr auto KEEP_URL							 =	 "/audioMcu/keep";
+	constexpr auto QUERY_BASE_URL				 =	 "/audioMcu/queryBase";
+	constexpr auto QUERY_LIST_URL				 =	 "/audioMcu/queryList";
 
 	/*
 	* 错误码规范：

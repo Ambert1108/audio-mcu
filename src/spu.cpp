@@ -38,7 +38,7 @@ namespace aom {
     // 启动注册线程
     registerThread = std::thread(&SipProcessUnit::registerLoop, this);
     W_LOG("Account {} is started", username);
-    receiveThread.join();
+    //receiveThread.join();
     return true;
   }
 

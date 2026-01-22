@@ -224,8 +224,10 @@ namespace aom {
 		svr.Post(END_JOB_URL, setWork("End Job Request", &HttpProcessUnit::endRequest));
 		svr.Post(OPEN_MIRCO_URL, setWork("Open Mircophone Request", &HttpProcessUnit::openRequest));
 		svr.Post(CLOSE_MIRCO_URL, setWork("Close Mircophone Request", &HttpProcessUnit::closeRequest));
-		svr.Get(KEEP_URL, setWork("Keep Alive Request", &HttpProcessUnit::pollRequest));
-		svr.Options(KEEP_URL, setOption(&requestSet));
+		svr.Get(QUERY_BASE_URL, setWork("Query info Request", &HttpProcessUnit::queryBaseRequest));
+		svr.Options(QUERY_BASE_URL, setOption(&requestSet));
+		svr.Get(QUERY_LIST_URL, setWork("Query List Request", &HttpProcessUnit::queryListRequest));
+		svr.Options(QUERY_LIST_URL, setOption(&requestSet));
 
 		svr.set_error_handler([](const Request& req, Response& res) {
 			std::string jobId = {};
@@ -520,6 +522,21 @@ namespace aom {
 		resp.jobNumber = resp.jobList.size();
 		status.pollCount.fetch_add(1);
 		status.pollSum.fetch_add(1);
+		rsp.set_content(toJsonString(resp), ContentType::json);
+	}
+
+	void HttpProcessUnit::queryBaseRequest(const Request& req, Response& rsp, const std::string& name) {
+		QueryBaseResponse resp{};
+		mcu->getMpuBase(resp.jobNum, resp.chnlNum);
+		resp.cpu = cpuQuery.getCurrentCPUUsage();
+		resp.mem = seeker::file::getVmRSS();
+
+		rsp.set_content(toJsonString(resp), ContentType::json);
+	}
+
+	void HttpProcessUnit::queryListRequest(const Request& req, Response& rsp, const std::string& name) {
+		QueryInfoResponse resp{};
+		mcu->getMpuInfo(resp.list);
 		rsp.set_content(toJsonString(resp), ContentType::json);
 	}
 }

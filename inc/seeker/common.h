@@ -58,7 +58,7 @@ inline std::string toString(std::chrono::system_clock::time_point timepoint, con
   ss << std::put_time(&tm, fmt);
   auto tMilli = std::chrono::duration_cast<std::chrono::milliseconds>(timepoint.time_since_epoch());
   auto ms = tMilli - tSeconds;
-  ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+  //ss << "." << std::setfill('0') << std::setw(3) << ms.count();
   return ss.str();
 };
 

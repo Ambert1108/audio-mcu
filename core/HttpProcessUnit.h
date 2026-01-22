@@ -75,6 +75,93 @@ namespace aom {
 		std::atomic<uint64_t> pollSum = 0;
 	};
 
+	class CPUQuery {
+	public:
+		CPUQuery() {
+			pid = getpid();
+			clockTicks = sysconf(_SC_CLK_TCK);
+			lastTotalTime = 0;
+			lastSampleTime = 0;
+
+			getCurrentCPUUsage();
+		}
+
+		double getCurrentCPUUsage() {
+			static unsigned long long lastCPUTime = 0;
+			static unsigned long long lastSysTime = 0;
+
+			// 获取当前进程CPU时间
+			unsigned long long currentCPUTime = getProcessCPUTime();
+			unsigned long long currentSysTime = getCurrentTimeMS();
+
+			if (lastSysTime == 0) {
+				lastCPUTime = currentCPUTime;
+				lastSysTime = currentSysTime;
+				return 0.0;
+			}
+
+			// 计算增量
+			unsigned long long cpuDiff = currentCPUTime - lastCPUTime;  // 时钟滴答
+			unsigned long long timeDiff = currentSysTime - lastSysTime; // 毫秒
+
+			// 更新
+			lastCPUTime = currentCPUTime;
+			lastSysTime = currentSysTime;
+
+			if (timeDiff == 0) return 0.0;
+
+			// 转换为百分比（与top一致，可超过100%）
+			long clockTicks = sysconf(_SC_CLK_TCK);
+			double cpuUsage = (static_cast<double>(cpuDiff) / clockTicks) / (timeDiff / 1000.0) * 100.0;
+
+			return cpuUsage;
+		}
+
+	private:
+		unsigned long long getCurrentTimeMS() {
+			return std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+		}
+
+		unsigned long long getProcessCPUTime() {
+			std::string statPath = "/proc/" + std::to_string(pid) + "/stat";
+			std::ifstream statFile(statPath);
+
+			if (!statFile.is_open()) {
+				return 0;
+			}
+
+			std::string line;
+			std::getline(statFile, line);
+			statFile.close();
+
+			std::istringstream iss(line);
+			std::vector<std::string> tokens;
+			std::string token;
+
+			while (std::getline(iss, token, ' ')) {
+				tokens.push_back(token);
+			}
+
+			if (tokens.size() >= 15) {
+				unsigned long long utime = std::stoull(tokens[13]);
+				unsigned long long stime = std::stoull(tokens[14]);
+				return utime + stime;
+			}
+
+			return 0;
+		}
+
+		int getCPUCount() {
+			return sysconf(_SC_NPROCESSORS_ONLN);
+		}
+
+		pid_t pid;
+		long clockTicks;
+		unsigned long long lastTotalTime;
+		unsigned long long lastSampleTime;
+	};
+
 	class HttpProcessUnit {
 	public:
 		HttpProcessUnit(const std::string& httpIp, const port_t& httpPort);
@@ -99,6 +186,10 @@ namespace aom {
 
 		void pollRequest(const Request& req, Response& rsp, const std::string& name);
 
+		void queryBaseRequest(const Request& req, Response& rsp, const std::string& name);
+
+		void queryListRequest(const Request& req, Response& rsp, const std::string& name);
+
 		HttpTask setWork(const std::string& actionName, Handle func);
 
 		HttpTask setOption(UndefineHandle func);
@@ -109,7 +200,7 @@ namespace aom {
 		MediaControlUnit* mcu = nullptr;
 		InvokeTimerPtr hpuCheck = nullptr;
 		HPUStatus status;
-
+		CPUQuery  cpuQuery;
 		int64_t serverStartTime = 0;
 		const std::string _httpIp = {};
 		const port_t _httpPort = 0;

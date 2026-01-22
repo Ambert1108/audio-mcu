@@ -220,7 +220,11 @@ namespace aom {
 			readLock lck(mpuFormLocker);
 			it = mpus.find(context.jobId);
 			//mpu不存在，业务处理失败
-			if (it == mpus.end()) return false;
+			if (it == mpus.end()) {
+				E_LOG("[mcu::removeChnl] find jobId {} failed", context.jobId);
+				status.leaveErrNum.fetch_add(1);
+				return false;
+			}
 		}
 
 		//更新mpu
@@ -299,6 +303,21 @@ namespace aom {
 			list.push_back(each.first);
 		}
 		return true;
+	}
+
+	void MediaControlUnit::getMpuBase(int& jobNum, int& chnlNum) {
+		jobNum = status.runningJob.load();
+		chnlNum = status.runningChnl.load();
+	}
+
+	void MediaControlUnit::getMpuInfo(std::vector<MpuInfo>& info) {
+		mpuForm::iterator it;
+		{
+			readLock lck(mpuFormLocker);
+			for (const auto& [key, val] : mpus) {
+				info.push_back(val->getInfo());
+			}
+		}
 	}
 
 	void MediaControlUnit::setCreateErr() {

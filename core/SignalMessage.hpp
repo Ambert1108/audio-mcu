@@ -79,6 +79,38 @@ namespace aom {
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PollRespInfo, jobNumber, jobList);
   typedef PollRespInfo PollResponse;
 
+  struct QueryBaseResponse {
+    double cpu;
+    int64_t mem;
+    int jobNum;
+    int chnlNum;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(QueryBaseResponse, cpu, mem, jobNum, chnlNum);
+
+  struct MpuInfo {
+    std::string meetingId{};
+    std::string createTime{};
+    int64_t meetingDuration = 0;
+    int32_t userNum = 0;
+    int mediaBitrate = 0;
+    std::vector<std::string> userIdList{};
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(
+      MpuInfo,
+      meetingId,
+      createTime,
+      meetingDuration,
+      userNum,
+      mediaBitrate,
+      userIdList
+    )
+  };
+
+  struct QueryInfoResponse {
+    std::vector<MpuInfo> list;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(QueryInfoResponse, list);
+
   struct CreateJobContext {
     std::string jobId = "unknown";
     std::string url = "";

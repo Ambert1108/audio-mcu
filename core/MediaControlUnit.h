@@ -7,7 +7,6 @@
 #pragma once
 
 #include "Config.h"
-#include "SignalMessage.hpp"
 #include "MediaProcessUnit.h"
 
 #include "utils/InvokeTimer.hpp"
@@ -260,6 +259,8 @@ namespace aom {
 		bool updateDestition(const UpdateContext& context);
 
 		bool getMpuIdList(mpuIdList& list);
+		void getMpuBase(int& jobNum, int& chnlNum);
+		void getMpuInfo(std::vector<MpuInfo>& info);
 
 		void setCreateErr();
 		void setJoinErr();

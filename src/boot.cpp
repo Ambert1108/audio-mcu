@@ -58,6 +58,7 @@ int main(int argc, char* argv[]) {
 		//	"/home/data/sherpa/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/joiner.int8.onnx", 
 		//	"/home/data/sherpa/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/tokens.txt");
 		bool isHttpMode = config::GetBoolean("test", "is_http", false);
+		bool isSipHttpMode = config::GetBoolean("test", "is_sip_http", true);
 
 		if (isHttpMode) {
 			std::string ip = config::Get("test", "ip", "0.0.0.0");
@@ -74,9 +75,6 @@ int main(int argc, char* argv[]) {
 			std::unique_ptr<HttpProcessUnit> hpu = std::make_unique<HttpProcessUnit>(ip, port);
 			hpu->open();
 			hpu.reset();
-			if (!MediaControlUnit::own()) {
-				throw std::runtime_error("get error: JobManager is not own!");
-			}
 		}
 		else {
 			std::string localIp = config::Get("main", "sip_ip", "127.0.0.1");
@@ -96,6 +94,24 @@ int main(int argc, char* argv[]) {
 			}
 			std::unique_ptr<SipProcessUnit> spu = std::make_unique<SipProcessUnit>(user, pwd, ip, ip, serverPort, localIp, localPort);
 			spu->start();
+
+			if (isSipHttpMode) {
+				std::string ip = config::Get("test", "ip", "0.0.0.0");
+				port_t port = config::GetInteger("test", "port", 5060);
+				if (ip.empty()) {
+					E_LOG("[boot::Error] httpServer.host=[{}]", ip);
+					exit(-1);
+				}
+
+				if (port < 1024) {
+					E_LOG("[boot::Error] httpServer.binding_port=[{}]", port);
+					exit(-1);
+				}
+				std::unique_ptr<HttpProcessUnit> hpu = std::make_unique<HttpProcessUnit>(ip, port);
+				hpu->open();
+				hpu.reset();
+			}
+
 			spu->stop();
 			spu.reset();
 		}

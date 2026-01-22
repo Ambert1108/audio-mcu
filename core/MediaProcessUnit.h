@@ -72,6 +72,7 @@ namespace aom {
 
 		TaskStatusType getStatus() const;
 		const MediaProcessData& getData() const;
+		const MpuInfo& getInfo();
 		int getChnlNum() const;
 		int getCodecType() const;
 		void addChannel(const std::string& id, const Point& src, const Point& dst, int pt, 
@@ -98,17 +99,20 @@ namespace aom {
 		bool initDecFlag = true;
 		std::atomic<bool> updateVideo = false;
 		std::atomic<bool> updateTemplate = false;
+		int bitrate = 0;
 
 		std::deque<std::unique_ptr<Event>> eventQue{};
 		std::unordered_map<std::string, UniqueAPC> APCs;
 		mutable std::shared_mutex eventQueLocker{};
 		mutable std::mutex apcLocker{};
 		mutable std::mutex mixerLocker{};
+		mutable std::mutex infoLocker{};
 
 		InvokeTimerPtr callback;
 		TaskStatus status;
 		MpuCtxPtr ctx;
 		MediaProcessData data;
+		MpuInfo mpuInfo;
 		UniqueMix mixer;
 		SwrContext* swrContext = nullptr;
 		SwrContext* trsSwrContext = nullptr;

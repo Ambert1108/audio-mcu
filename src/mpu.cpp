@@ -81,6 +81,8 @@ namespace aom {
 		client = std::make_shared<httplib::Client>("10.1.69.7", 30556);
 		I_LOG("[mpu::create->{}] url={}", ctx->jobId, ctx->callbackUrl);
 		data.creatingDuration = seeker::time::currentTime() - startTime;
+		mpuInfo.meetingId = data.jobId;
+		mpuInfo.createTime = seeker::time::toString(seeker::time::currentTime());
 	}
 
 	MediaProcessUnit::~MediaProcessUnit() {
@@ -109,6 +111,12 @@ namespace aom {
 
 	const MediaProcessData& MediaProcessUnit::getData() const { return data; }
 
+	const MpuInfo& MediaProcessUnit::getInfo() {
+		mpuInfo.meetingDuration = seeker::time::currentTime() - startTime;
+		mpuInfo.mediaBitrate = bitrate;
+		return mpuInfo;
+	}
+
 	int MediaProcessUnit::getChnlNum() const { return APCs.size(); }
 
 	int MediaProcessUnit::getCodecType() const { return ctx->codecType; }
@@ -135,6 +143,11 @@ namespace aom {
 		if (!workTh.joinable()) {
 			workTh = std::thread{ &MediaProcessUnit::workingLoop, this };
 		}
+		{
+			uniqueLock lck(infoLocker);
+			mpuInfo.userIdList.push_back(id);
+			++mpuInfo.userNum;
+		}
 		uniqueLock lck(mixerLocker);
 		mixer->addStreamId(id);
 		data.portList.push_back(src.port);
@@ -151,6 +164,16 @@ namespace aom {
 			}
 			port = it->second->getPort();
 			APCs.erase(it);
+		}
+		{
+			uniqueLock lck(infoLocker);
+			for (auto it = mpuInfo.userIdList.begin(); it != mpuInfo.userIdList.end(); it++) {
+				if (*it == id) {
+					mpuInfo.userIdList.erase(it);
+					break;
+				}
+			}
+			--mpuInfo.userNum;
 		}
 		uniqueLock lck(mixerLocker);
 		mixer->removeId(id);
@@ -226,6 +249,7 @@ namespace aom {
 		int64_t timePoint = 0;
 		int64_t timeTotal = 0;
 		int32_t timeCount = 0;
+		int64_t totalByte = 0;
 		int noNeedCount = 0;
 		uint32_t ts = 0;
 		size_t lengthStandard = ctx->outSampleRate / 50; //参考标准长度
@@ -282,9 +306,11 @@ namespace aom {
 			//每mpucheckInterval秒计算MPU相关参数
 			printTimer = InvokeTimer::CreateTimer(std::chrono::seconds(mpucheckInterval), true, [&] {
 				float timeAvg = (float)timeTotal / timeCount;
-				I_LOG("[MPU::check->{}] LoopUse[{}ms] MixList[{}]", ctx->jobId, timeAvg, mixId);
+				bitrate = totalByte * 8.0 / 1000.0 / 1000.0; //kbps
+				I_LOG("[MPU::check->{}] LoopUse:{}ms outBitrate:{}kbps MixList:{}", ctx->jobId, timeAvg, bitrate, mixId);
 				timeTotal = 0;
 				timeCount = 0;
+				totalByte = 0;
 				mixId.clear();
 			});
 			printTimer->Start();
@@ -471,6 +497,7 @@ namespace aom {
 							outputBufferArray[0] = (uint8_t*)val.data();
 							int outputSamples = swr_convert(swrContext, &outputBuffer,
 								val.size(), (const uint8_t**)&outputBufferArray[0], val.size());
+							totalByte += static_cast<int64_t>(outputSamples) * 4;
 							it->second->sendRtp(outputBuffer, val.size(), ts);
 							av_free(outputBuffer);
 						}
