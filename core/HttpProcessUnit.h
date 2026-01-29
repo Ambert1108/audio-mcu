@@ -202,6 +202,7 @@ namespace aom {
 		HPUStatus status;
 		CPUQuery  cpuQuery;
 		int64_t serverStartTime = 0;
+		std::string startTimePoint{};
 		const std::string _httpIp = {};
 		const port_t _httpPort = 0;
 		std::string controlUrl;

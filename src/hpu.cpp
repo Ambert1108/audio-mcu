@@ -173,6 +173,7 @@ namespace aom {
 
 	void HttpProcessUnit::open() {
 		serverStartTime = seeker::time::currentTime();
+		startTimePoint = seeker::time::toString(serverStartTime);
 		isOpen = true;
 		I_LOG("Http Process Unit is loading, http listening {}:{}", _httpIp, _httpPort);
 		mcu = MediaControlUnit::getInstance();
@@ -530,6 +531,8 @@ namespace aom {
 		mcu->getMpuBase(resp.jobNum, resp.chnlNum);
 		resp.cpu = cpuQuery.getCurrentCPUUsage();
 		resp.mem = seeker::file::getVmRSS();
+		resp.startTime = startTimePoint;
+		resp.workTime = (seeker::time::currentTime() - serverStartTime) * 0.001;
 
 		rsp.set_content(toJsonString(resp), ContentType::json);
 	}

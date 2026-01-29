@@ -84,8 +84,10 @@ namespace aom {
     int64_t mem;
     int jobNum;
     int chnlNum;
+    std::string startTime;
+    int64_t workTime;
   };
-  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(QueryBaseResponse, cpu, mem, jobNum, chnlNum);
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(QueryBaseResponse, cpu, mem, jobNum, chnlNum, startTime, workTime);
 
   struct MpuInfo {
     std::string meetingId{};
