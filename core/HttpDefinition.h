@@ -16,6 +16,7 @@ namespace aom {
 	constexpr auto KEEP_URL							 =	 "/audioMcu/keep";
 	constexpr auto QUERY_BASE_URL				 =	 "/audioMcu/queryBase";
 	constexpr auto QUERY_LIST_URL				 =	 "/audioMcu/queryList";
+	constexpr auto QUERY_EVENT_URL			 =	 "/audioMcu/getEvent";
 
 	/*
 	* 错误码规范：

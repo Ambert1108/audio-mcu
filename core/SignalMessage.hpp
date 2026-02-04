@@ -113,8 +113,33 @@ namespace aom {
   };
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(QueryInfoResponse, list);
 
+  struct EventInfo {
+    std::string eventType;
+    std::string meetingId;
+    std::string userId;
+    std::string eventTime;
+    std::string eventResult;
+    std::string errInfo;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(
+      EventInfo,
+      eventType,
+      meetingId,
+      userId,
+      eventTime,
+      eventResult,
+      errInfo
+    )
+  };
+
+  struct QueryEventResponse {
+    std::vector<EventInfo> eventList;
+  };
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(QueryEventResponse, eventList);
+
   struct CreateJobContext {
     std::string jobId = "unknown";
+    std::string userId = "unknown";
     std::string url = "";
     friend void from_json(const nlohmann::json& j, CreateJobContext& context) {
       if(j.contains("url")) j.at("url").get_to(context.url);

@@ -229,6 +229,8 @@ namespace aom {
 		svr.Options(QUERY_BASE_URL, setOption(&requestSet));
 		svr.Get(QUERY_LIST_URL, setWork("Query List Request", &HttpProcessUnit::queryListRequest));
 		svr.Options(QUERY_LIST_URL, setOption(&requestSet));
+		svr.Get(QUERY_EVENT_URL, setWork("Query Event Request", &HttpProcessUnit::queryEventRequest));
+		svr.Options(QUERY_EVENT_URL, setOption(&requestSet));
 
 		svr.set_error_handler([](const Request& req, Response& res) {
 			std::string jobId = {};
@@ -540,6 +542,12 @@ namespace aom {
 	void HttpProcessUnit::queryListRequest(const Request& req, Response& rsp, const std::string& name) {
 		QueryInfoResponse resp{};
 		mcu->getMpuInfo(resp.list);
+		rsp.set_content(toJsonString(resp), ContentType::json);
+	}
+
+	void HttpProcessUnit::queryEventRequest(const Request& req, Response& rsp, const std::string& name) {
+		QueryEventResponse resp{};
+		mcu->getEventList(resp.eventList);
 		rsp.set_content(toJsonString(resp), ContentType::json);
 	}
 }

@@ -190,6 +190,8 @@ namespace aom {
 
 		void queryListRequest(const Request& req, Response& rsp, const std::string& name);
 
+		void queryEventRequest(const Request& req, Response& rsp, const std::string& name);
+
 		HttpTask setWork(const std::string& actionName, Handle func);
 
 		HttpTask setOption(UndefineHandle func);

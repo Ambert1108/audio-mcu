@@ -483,6 +483,7 @@ namespace aom {
     sendSIPResponse("SIP/2.0 200 OK", via, from, to, callId, cseq, "MESSAGE", fromAddr, tag);
 
     std::string message_body = extractMessageBody(request);
+    std::string userId = extractChnlId(request);
     std::string userName = message_body;
     if (userName.size() > 11) {
       userName = userName.substr(userName.length() - 11, 11);
@@ -490,21 +491,30 @@ namespace aom {
     std::regex pattern1("audio(\\d{6})");
     std::regex pattern2("close(\\d{6})");
     std::smatch matches;
-    I_LOG("message_body={}, userName={}", message_body, userName);
+    I_LOG("message_body={}, userName={}, from={}", message_body, userName, from);
     if (std::regex_match(userName, matches, pattern1)) {
       CreateJobContext createCtx;
       createCtx.jobId = matches[1];
+      createCtx.userId = userId;
       createCtx.url = "empty";
-      I_LOG("debug: create mpu, jobId={}", createCtx.jobId);
+      I_LOG("debug: create mpu, jobId={}, userId={}", createCtx.jobId, createCtx.userId);
       mcu->createMpu(createCtx);
     }
     else if (std::regex_match(userName, matches, pattern2)) {
       std::string jobId = matches[1];
       I_LOG("debug: end mpu");
-      mcu->endMpu(jobId);
+      mcu->endMpu(jobId, userId);
     }
     else {
       E_LOG("sip mode: match message {} failed", userName);
+      EventInfo info;
+      info.eventType = "sip MESSAGE";
+      info.meetingId = "";
+      info.userId = userId;
+      info.eventTime = seeker::time::toString(seeker::time::currentTime());
+      info.eventResult = "fail";
+      info.errInfo = "无法匹配会议号";
+      mcu->setEventInfo(info);
     }
   }
 
@@ -524,6 +534,9 @@ namespace aom {
 
     std::string jobId = extractJobId(request);
 
+    //取出INVITE中的From作为channelId
+    std::string chnlId = extractChnlId(request);
+
     std::regex pattern("audio(\\d{6})");
     std::smatch match;
     if (std::regex_match(jobId, match, pattern)) {
@@ -531,18 +544,24 @@ namespace aom {
     }
     else {
       E_LOG("sip mode: match {} failed!", jobId);
+      EventInfo info;
+      info.eventType = "sip INVITE";
+      info.meetingId = jobId;
+      info.userId = chnlId;
+      info.eventTime = seeker::time::toString(seeker::time::currentTime());
+      info.eventResult = "fail";
+      info.errInfo = "from格式错误无法匹配";
+      mcu->setEventInfo(info);
       mcu->setJoinErr();
       return;
     }
 
     if (!mcu->checkJob(jobId)) {
       E_LOG("sip mode: jobId {} not found", jobId);
+
       mcu->setJoinErr();
       return;
     }
-
-    //取出INVITE中的From作为channelId
-    std::string chnlId = extractChnlId(request);
 
     //在SDP中取出payloadType、codecType、inSampleRate、outSampleRate、dstIp、dstPort
     SDPInfo info;
@@ -573,7 +592,6 @@ namespace aom {
 
     if (!mcu->addChnl(addCtx, addr)) {
       E_LOG("sip mode: jobId={} add channel {} faild", jobId, chnlId);
-
       return;
     }
     MicCtrlContext ctx;
@@ -608,6 +626,7 @@ namespace aom {
 
   void SipProcessUnit::handleACK(const std::string& request, struct sockaddr_in& fromAddr) {
     std::string jobId = extractJobId(request);
+    std::string chnlId = extractChnlId(request);
 
     std::regex pattern("audio(\\d{6})");
     std::smatch match;
@@ -616,6 +635,14 @@ namespace aom {
     }
     else {
       E_LOG("sip mode: match {} failed!", jobId);
+      EventInfo info;
+      info.eventType = "sip ACK";
+      info.meetingId = jobId;
+      info.userId = chnlId;
+      info.eventTime = seeker::time::toString(seeker::time::currentTime());
+      info.eventResult = "fail";
+      info.errInfo = "from格式错误无法匹配";
+      mcu->setEventInfo(info);
       mcu->setJoinErr();
       return;
     }
@@ -627,7 +654,6 @@ namespace aom {
     }
 
     //取出INVITE中的From作为channelId
-    std::string chnlId = extractChnlId(request);
     I_LOG("sip mode: session is make up, jobId={}, chnlId={}", jobId, chnlId);
   }
 
@@ -646,6 +672,7 @@ namespace aom {
     sendSIPResponse("SIP/2.0 200 OK", via, from, to, callId, cseq, "BYE", fromAddr, tag);
 
     std::string jobId = extractJobId(request);
+    std::string chnlId = extractChnlId(request);
 
     std::regex pattern("audio(\\d{6})");
     std::smatch match;
@@ -654,10 +681,18 @@ namespace aom {
     }
     else {
       E_LOG("sip mode: match {} failed!", jobId);
+      EventInfo info;
+      info.eventType = "sip BYE";
+      info.meetingId = jobId;
+      info.userId = chnlId;
+      info.eventTime = seeker::time::toString(seeker::time::currentTime());
+      info.eventResult = "fail";
+      info.errInfo = "from格式错误无法匹配";
+      mcu->setEventInfo(info);
       mcu->setLeaveErr();
       return;
     }
-    std::string chnlId = extractChnlId(request);
+
     I_LOG("sip mode: jobId={} start remove chnlId={}", jobId, chnlId);
     RemoveChnlContext ctx(jobId, chnlId);
     mcu->removeChnl(ctx);

@@ -6,6 +6,7 @@ namespace aom {
 
 	MediaControlUnit::MediaControlUnit() {
 		seeker::rtp::RtpTransceiver::init(8);
+		eventList.reserve(30);
 	}
 
 	MediaControlUnit::~MediaControlUnit() {
@@ -24,7 +25,7 @@ namespace aom {
 
 	int MediaControlUnit::init() {
 		AutoCloseThr = std::thread{ &MediaControlUnit::autoClose, this };
-		endJobFunc = std::bind(&MediaControlUnit::endMpu, this, std::placeholders::_1);
+		endJobFunc = std::bind(&MediaControlUnit::endMpu, this, std::placeholders::_1, std::placeholders::_2);
 		freePortFunc = std::bind(&MediaControlUnit::freePort, this, std::placeholders::_1);
 		memCheck.start(memcheckInterval, memprintInterval);
 		mcuCheck = InvokeTimer::CreateTimer(std::chrono::seconds(mcucheckInterval), true, [&]() {
@@ -106,7 +107,18 @@ namespace aom {
 			it = mpus.find(context.jobId);
 
 		}
-		if (it != mpus.end()) return false;
+		if (it != mpus.end()) {
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"create",
+				context.jobId,
+				context.userId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"未找到会议id" }
+			);
+			return false;
+		}
 		//mpu不存在，创建任务
 
 
@@ -116,14 +128,34 @@ namespace aom {
 			auto newMpu = mpus.try_emplace(context.jobId, 
 				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, 
 					context.url), endJobFunc, freePortFunc));
-			if (!newMpu.second) return false;
+			if (!newMpu.second) {
+				uniqueLock lck(eventLocker);
+				eventList.emplace_back(EventInfo{
+					"create",
+					context.jobId,
+					context.userId,
+					seeker::time::toString(seeker::time::currentTime()),
+					"fail",
+					"服务器内部错误" }
+				);
+				return false;
+			}
 		}
 		status.runningJob.fetch_add(1);
 		status.createTotalNum.fetch_add(1);
+		uniqueLock lck(eventLocker);
+		eventList.emplace_back(EventInfo{
+			"create",
+			context.jobId,
+			context.userId,
+			seeker::time::toString(seeker::time::currentTime()),
+			"success",
+			"" }
+		);
 		return true;
 	}
 
-	bool MediaControlUnit::endMpu(const std::string& jobId) {
+	bool MediaControlUnit::endMpu(const std::string& jobId, const std::string& userId) {
 		UniqueMPU mpu = nullptr;
 
 		//在MPU表单中查找对应jobId，若不存在返回错误
@@ -133,6 +165,15 @@ namespace aom {
 			if (it == mpus.end()) {
 				W_LOG("[mcu::removeMpu][{}] is not found.", jobId);
 				status.destoryErrNum.fetch_add(1);
+				uniqueLock lck(eventLocker);
+				eventList.emplace_back(EventInfo{
+					"end",
+					jobId,
+					userId,
+					seeker::time::toString(seeker::time::currentTime()),
+					"fail",
+					"未找到会议号" }
+				);
 				return false;
 			}
 
@@ -150,7 +191,15 @@ namespace aom {
 			writeLock lck(closeMpuFormLocker);
 			closeMpus.emplace(std::move(mpu));
 		}
-
+		uniqueLock lck(eventLocker);
+		eventList.emplace_back(EventInfo{
+			"end",
+			jobId,
+			userId,
+			seeker::time::toString(seeker::time::currentTime()),
+			"success",
+			"" }
+		);
 		return true;
 	}
 
@@ -166,6 +215,15 @@ namespace aom {
 		//mpu不存在，业务处理失败
 		if (it == mpus.end()) {
 			status.joinErrNum.fetch_add(1);
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"join",
+				context.jobId,
+				context.chnlId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"未找到会议号" }
+			);
 			return false;
 		}
 
@@ -174,29 +232,74 @@ namespace aom {
 		if (audioPort == -1) {
 			audioPortTool->freePort(audioPort);
 			status.joinErrNum.fetch_add(1);
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"join",
+				context.jobId,
+				context.chnlId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"服务器内部错误：无法申请端口" }
+			);
 			return false;
 		}
 
 		if (context.inSampleRate == -1) {
 			E_LOG("[mcu::createMpu][{}] request param: inSampleRate is -1", context.jobId);
 			status.joinErrNum.fetch_add(1);
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"join",
+				context.jobId,
+				context.chnlId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"输入采样率无效" }
+			);
 			return false;
 		}
 		if (context.outSampleRate == -1) {
 			E_LOG("[mcu::createMpu][{}] request param: outSampleRate is -1", context.jobId);
 			status.joinErrNum.fetch_add(1);
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"join",
+				context.jobId,
+				context.chnlId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"输出采样率无效" }
+			);
 			return false;
 		}
 
 		if (context.codecType != 1 && context.codecType != 2) {
 			E_LOG("[mcu::createMpu][{}] request param: codecType is invalid val {}", context.jobId, context.codecType);
 			status.joinErrNum.fetch_add(1);
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"join",
+				context.jobId,
+				context.chnlId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"音频编码格式无效" }
+			);
 			return false;
 		}
 		if (it->second->getCodecType() != -1 && it->second->getCodecType() != context.codecType) {
 			E_LOG("[mcu::createMpu][{}] current codec type {} != user codec type {}", 
 				context.jobId, it->second->getCodecType(), context.codecType);
 			status.joinErrNum.fetch_add(1);
+			uniqueLock lck(eventLocker);
+			eventList.emplace_back(EventInfo{
+				"join",
+				context.jobId,
+				context.chnlId,
+				seeker::time::toString(seeker::time::currentTime()),
+				"fail",
+				"音频编码格式不匹配" }
+			);
 			return false;
 		}
 		context.listenIp = mediaIp;
@@ -209,6 +312,15 @@ namespace aom {
 
 		status.joinTotalNum.fetch_add(1);
 		status.runningChnl.fetch_add(1);
+		uniqueLock lck(eventLocker);
+		eventList.emplace_back(EventInfo{ 
+			"join",
+			context.jobId,
+			context.chnlId,
+			seeker::time::toString(seeker::time::currentTime()),
+			"success",
+			"" }
+		);
 		return true;
 	}
 
@@ -223,6 +335,15 @@ namespace aom {
 			if (it == mpus.end()) {
 				E_LOG("[mcu::removeChnl] find jobId {} failed", context.jobId);
 				status.leaveErrNum.fetch_add(1);
+				uniqueLock lck(eventLocker);
+				eventList.emplace_back(EventInfo{
+					"leave",
+					context.jobId,
+					context.chnlId,
+					seeker::time::toString(seeker::time::currentTime()),
+					"未找到会议号",
+					"" }
+				);
 				return false;
 			}
 		}
@@ -231,6 +352,15 @@ namespace aom {
 		it->second->reportMediaInfo(std::make_unique<RemoveChnlEvent>(context));
 		status.leaveTotalNum.fetch_add(1);
 		status.runningChnl.fetch_sub(1);
+		uniqueLock lck(eventLocker);
+		eventList.emplace_back(EventInfo{
+			"leave",
+			context.jobId,
+			context.chnlId,
+			seeker::time::toString(seeker::time::currentTime()),
+			"success",
+			"" }
+		);
 		return true;
 	}
 
@@ -320,6 +450,11 @@ namespace aom {
 		}
 	}
 
+	void MediaControlUnit::getEventList(std::vector<EventInfo>& infolist) {
+		uniqueLock lck(eventLocker);
+		infolist.swap(eventList);
+	}
+
 	void MediaControlUnit::setCreateErr() {
 		status.createErrNum.fetch_add(1);
 		status.createTotalNum.fetch_add(1);
@@ -338,5 +473,10 @@ namespace aom {
 	void MediaControlUnit::setDestoryErr() {
 		status.destoryErrNum.fetch_add(1);
 		status.destoryTotalNum.fetch_add(1);
+	}
+
+	void MediaControlUnit::setEventInfo(const EventInfo& info) {
+		uniqueLock lck(eventLocker);
+		eventList.emplace_back(std::move(info));
 	}
 }

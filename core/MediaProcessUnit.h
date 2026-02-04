@@ -59,7 +59,7 @@ namespace aom {
 	typedef std::unique_ptr<MpuContext> MpuCtxPtr;
 
 	typedef std::unique_ptr<class MediaProcessUnit> UniqueMPU;
-	typedef std::function<bool(std::string)> RemoveCallback;
+	typedef std::function<bool(std::string, std::string)> RemoveCallback;
 	using UniqueMix = std::unique_ptr<AudioMixer>;
 	using namespace std::chrono_literals;
 

@@ -321,7 +321,7 @@ namespace aom {
 					//if (waitChnlTime / 1000 >= noChnlTime) {
 					//	status << TaskStatusType::exce;
 					//	data.closeMethod = "noChnlAutoClose";
-					//	autoCloseCallback(ctx->jobId);
+					//	autoCloseCallback(ctx->jobId, "");
 					//}
 					//waitChnlTime = seeker::time::currentTime() - timePoint;
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -587,7 +587,7 @@ namespace aom {
 			E_LOG("[mpu::eventHandle->{}] get exception: {}", ctx->jobId, ex.what());
 			status << TaskStatusType::exce;
 			data.closeMethod = "MpuException";
-			autoCloseCallback(ctx->jobId);
+			autoCloseCallback(ctx->jobId, "audioMCU");
 		}
 		I_LOG("[mpu::eventHandle->{}] eventHandle thread is closed", ctx->jobId);
 	}

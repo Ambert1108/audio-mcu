@@ -213,9 +213,11 @@ namespace aom {
 		mutable std::shared_mutex mpuFormLocker = {};
 		mutable std::shared_mutex closeMpuFormLocker = {};
 		mutable std::mutex closeLocker = {};
+		mutable std::mutex eventLocker = {};
 		std::condition_variable closeCondition = {};
 		RemoveFunc endJobFunc = nullptr;
 		FreePort freePortFunc = nullptr;
+		std::vector<EventInfo> eventList{};
 
 		std::atomic<bool> keepWork{ true };
 		std::atomic<uint64_t> autoCloseNum{ 0 };
@@ -251,7 +253,7 @@ namespace aom {
 
 		bool checkJob(const std::string& id);
 		bool createMpu(const CreateJobContext& context);
-		bool endMpu(const std::string& id);
+		bool endMpu(const std::string& id, const std::string& uid = "");
 		bool addChnl(const AddChnlContext& context, ListenAddr& addr);
 		bool removeChnl(const RemoveChnlContext& context);
 		bool openMic(const MicCtrlContext& context);
@@ -261,11 +263,13 @@ namespace aom {
 		bool getMpuIdList(mpuIdList& list);
 		void getMpuBase(int& jobNum, int& chnlNum);
 		void getMpuInfo(std::vector<MpuInfo>& info);
+		void getEventList(std::vector<EventInfo>& infolist);
 
 		void setCreateErr();
 		void setJoinErr();
 		void setLeaveErr();
 		void setDestoryErr();
+		void setEventInfo(const EventInfo& info);
 	};
 
 }
