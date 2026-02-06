@@ -106,6 +106,38 @@ namespace aom {
 		std::atomic<int> currentSession{ 0 };          // 当前时间周期（每小时）
 	};
 
+	class EventManager {
+	private:
+		std::vector<EventInfo> eventList;
+		size_t _capacity;
+		mutable std::mutex eventLocker = {};
+	public:
+		EventManager(size_t cap) {
+			_capacity = cap;
+			eventList.reserve(_capacity);
+		}
+
+		void add(const EventInfo& event) {
+			uniqueLock lck(eventLocker);
+			if (eventList.size() >= _capacity) {
+				size_t half = eventList.size() / 2;
+
+				std::move(eventList.begin() + half, eventList.end(), eventList.begin());
+				eventList.resize(eventList.size() - half);
+			}
+
+			eventList.push_back(event);
+		}
+
+		void get(std::vector<EventInfo>& list) {
+			uniqueLock lck(eventLocker);
+			list.swap(eventList);
+		}
+
+		size_t size() const { return eventList.size(); }
+		size_t capacity() const { return eventList.capacity(); }
+	};
+
 	using PortList = std::unordered_set<port_t>;
 	class PortTool {
 	public:
@@ -213,11 +245,10 @@ namespace aom {
 		mutable std::shared_mutex mpuFormLocker = {};
 		mutable std::shared_mutex closeMpuFormLocker = {};
 		mutable std::mutex closeLocker = {};
-		mutable std::mutex eventLocker = {};
 		std::condition_variable closeCondition = {};
 		RemoveFunc endJobFunc = nullptr;
 		FreePort freePortFunc = nullptr;
-		std::vector<EventInfo> eventList{};
+		EventManager eventMg;
 
 		std::atomic<bool> keepWork{ true };
 		std::atomic<uint64_t> autoCloseNum{ 0 };

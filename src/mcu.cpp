@@ -4,9 +4,8 @@ namespace aom {
 	MediaControlUnit* MediaControlUnit::mcu = nullptr;
 	std::atomic<uint16_t> MediaControlUnit::refCount_ = 0;
 
-	MediaControlUnit::MediaControlUnit() {
+	MediaControlUnit::MediaControlUnit() : eventMg(30) {
 		seeker::rtp::RtpTransceiver::init(8);
-		eventList.reserve(30);
 	}
 
 	MediaControlUnit::~MediaControlUnit() {
@@ -108,8 +107,7 @@ namespace aom {
 
 		}
 		if (it != mpus.end()) {
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"create",
 				context.jobId,
 				context.userId,
@@ -129,8 +127,7 @@ namespace aom {
 				std::make_unique<MediaProcessUnit>(std::make_unique<MpuContext>(context.jobId, 
 					context.url), endJobFunc, freePortFunc));
 			if (!newMpu.second) {
-				uniqueLock lck(eventLocker);
-				eventList.emplace_back(EventInfo{
+				eventMg.add(EventInfo{
 					"create",
 					context.jobId,
 					context.userId,
@@ -143,8 +140,7 @@ namespace aom {
 		}
 		status.runningJob.fetch_add(1);
 		status.createTotalNum.fetch_add(1);
-		uniqueLock lck(eventLocker);
-		eventList.emplace_back(EventInfo{
+		eventMg.add(EventInfo{
 			"create",
 			context.jobId,
 			context.userId,
@@ -165,8 +161,7 @@ namespace aom {
 			if (it == mpus.end()) {
 				W_LOG("[mcu::removeMpu][{}] is not found.", jobId);
 				status.destoryErrNum.fetch_add(1);
-				uniqueLock lck(eventLocker);
-				eventList.emplace_back(EventInfo{
+				eventMg.add(EventInfo{
 					"end",
 					jobId,
 					userId,
@@ -191,8 +186,7 @@ namespace aom {
 			writeLock lck(closeMpuFormLocker);
 			closeMpus.emplace(std::move(mpu));
 		}
-		uniqueLock lck(eventLocker);
-		eventList.emplace_back(EventInfo{
+		eventMg.add(EventInfo{
 			"end",
 			jobId,
 			userId,
@@ -215,8 +209,7 @@ namespace aom {
 		//mpu不存在，业务处理失败
 		if (it == mpus.end()) {
 			status.joinErrNum.fetch_add(1);
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"join",
 				context.jobId,
 				context.chnlId,
@@ -232,8 +225,7 @@ namespace aom {
 		if (audioPort == -1) {
 			audioPortTool->freePort(audioPort);
 			status.joinErrNum.fetch_add(1);
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"join",
 				context.jobId,
 				context.chnlId,
@@ -247,8 +239,7 @@ namespace aom {
 		if (context.inSampleRate == -1) {
 			E_LOG("[mcu::createMpu][{}] request param: inSampleRate is -1", context.jobId);
 			status.joinErrNum.fetch_add(1);
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"join",
 				context.jobId,
 				context.chnlId,
@@ -261,8 +252,7 @@ namespace aom {
 		if (context.outSampleRate == -1) {
 			E_LOG("[mcu::createMpu][{}] request param: outSampleRate is -1", context.jobId);
 			status.joinErrNum.fetch_add(1);
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"join",
 				context.jobId,
 				context.chnlId,
@@ -276,8 +266,7 @@ namespace aom {
 		if (context.codecType != 1 && context.codecType != 2) {
 			E_LOG("[mcu::createMpu][{}] request param: codecType is invalid val {}", context.jobId, context.codecType);
 			status.joinErrNum.fetch_add(1);
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"join",
 				context.jobId,
 				context.chnlId,
@@ -291,8 +280,7 @@ namespace aom {
 			E_LOG("[mcu::createMpu][{}] current codec type {} != user codec type {}", 
 				context.jobId, it->second->getCodecType(), context.codecType);
 			status.joinErrNum.fetch_add(1);
-			uniqueLock lck(eventLocker);
-			eventList.emplace_back(EventInfo{
+			eventMg.add(EventInfo{
 				"join",
 				context.jobId,
 				context.chnlId,
@@ -312,8 +300,7 @@ namespace aom {
 
 		status.joinTotalNum.fetch_add(1);
 		status.runningChnl.fetch_add(1);
-		uniqueLock lck(eventLocker);
-		eventList.emplace_back(EventInfo{ 
+		eventMg.add(EventInfo{
 			"join",
 			context.jobId,
 			context.chnlId,
@@ -335,8 +322,7 @@ namespace aom {
 			if (it == mpus.end()) {
 				E_LOG("[mcu::removeChnl] find jobId {} failed", context.jobId);
 				status.leaveErrNum.fetch_add(1);
-				uniqueLock lck(eventLocker);
-				eventList.emplace_back(EventInfo{
+				eventMg.add(EventInfo{
 					"leave",
 					context.jobId,
 					context.chnlId,
@@ -352,8 +338,7 @@ namespace aom {
 		it->second->reportMediaInfo(std::make_unique<RemoveChnlEvent>(context));
 		status.leaveTotalNum.fetch_add(1);
 		status.runningChnl.fetch_sub(1);
-		uniqueLock lck(eventLocker);
-		eventList.emplace_back(EventInfo{
+		eventMg.add(EventInfo{
 			"leave",
 			context.jobId,
 			context.chnlId,
@@ -451,8 +436,7 @@ namespace aom {
 	}
 
 	void MediaControlUnit::getEventList(std::vector<EventInfo>& infolist) {
-		uniqueLock lck(eventLocker);
-		infolist.swap(eventList);
+		eventMg.get(infolist);
 	}
 
 	void MediaControlUnit::setCreateErr() {
@@ -476,7 +460,6 @@ namespace aom {
 	}
 
 	void MediaControlUnit::setEventInfo(const EventInfo& info) {
-		uniqueLock lck(eventLocker);
-		eventList.emplace_back(std::move(info));
+		eventMg.add(std::move(info));
 	}
 }
