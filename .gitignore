@@ -94,7 +94,4 @@ ipch/
 out/
 build/
 mod/
-res/animations/
-res/fonts/
-res/images/
 CMakeSettings.json

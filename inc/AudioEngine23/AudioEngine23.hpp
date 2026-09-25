@@ -19,33 +19,82 @@ namespace AudioEngine23 {
   };
 
   class Decoder {
-    uint8_t m_pOutData[1024 * 10];
+    //uint8_t m_pOutData[1024 * 10];
+    std::vector<uint8_t> m_outBuffer;
     const AVCodec* codec;
     AVCodecContext* c = NULL;
     AudioType expectedType;
 
+    //bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize) {
+    //  int ret = avcodec_receive_frame(c, inFrame);
+    //  if (ret < 0)
+    //  {
+    //    return false;
+    //  }
+    //  int data_size = av_get_bytes_per_sample(c->sample_fmt);
+    //  if (data_size < 0) {
+    //    /* This should not occur, checking just for paranoia */
+    //    E_LOG("Failed to calculate data size\n");
+    //    return false;
+    //  }
+    //  int iCopyPos = 0;
+    //  for (int i = 0; i < inFrame->nb_samples; i++)
+    //  {
+    //    for (int ch = 0; ch < c->channels; ch++)
+    //    {
+    //      memcpy(m_pOutData + iCopyPos, inFrame->data[ch] + data_size * i, data_size);
+    //      iCopyPos = iCopyPos + data_size;
+    //    }
+    //  }
+    //  pOutData = m_pOutData;
+    //  iSize = iCopyPos;
+    //  return true;
+    //}
+
     bool getData(AVFrame* inFrame, uint8_t*& pOutData, int& iSize) {
       int ret = avcodec_receive_frame(c, inFrame);
-      if (ret < 0)
-      {
-        return false;
+      if (ret < 0) return false;
+
+      int bytes_per_sample = av_get_bytes_per_sample(c->sample_fmt);
+      if (bytes_per_sample < 0) return false;
+
+      // 1. 计算所需总大小
+      int total_size = inFrame->nb_samples * c->channels * bytes_per_sample;
+
+      // 2. 确保 vector 空间足够
+      if (m_outBuffer.size() < total_size) {
+        m_outBuffer.resize(total_size * 1.5); // 预留一点空间避免频繁重分配
       }
-      int data_size = av_get_bytes_per_sample(c->sample_fmt);
-      if (data_size < 0) {
-        /* This should not occur, checking just for paranoia */
-        E_LOG("Failed to calculate data size\n");
-        return false;
-      }
+
+      // 3. 判断是否是平面格式 (Planar)
+      // 比如 AV_SAMPLE_FMT_FLTP 是 planar (数据分ch存)，AV_SAMPLE_FMT_S16 是 packed (数据交错存)
+      bool is_planar = av_sample_fmt_is_planar(c->sample_fmt);
+
       int iCopyPos = 0;
-      for (int i = 0; i < inFrame->nb_samples; i++)
-      {
-        for (int ch = 0; ch < c->channels; ch++)
-        {
-          memcpy(m_pOutData + iCopyPos, inFrame->data[ch] + data_size * i, data_size);
-          iCopyPos = iCopyPos + data_size;
+      uint8_t* dst = m_outBuffer.data();
+
+      // 核心逻辑修正
+      if (is_planar) {
+        // Planar 转 Packed (你的原始逻辑是为了做这个)
+        // LLL... RRR... -> LRLRLR...
+        for (int i = 0; i < inFrame->nb_samples; i++) {
+          for (int ch = 0; ch < c->channels; ch++) {
+            // 安全检查：防止 inFrame->data[ch] 为空
+            if (inFrame->data[ch]) {
+              memcpy(dst + iCopyPos, inFrame->data[ch] + bytes_per_sample * i, bytes_per_sample);
+            }
+            iCopyPos += bytes_per_sample;
+          }
         }
       }
-      pOutData = m_pOutData;
+      else {
+        // 已经是 Packed 格式，直接整块拷贝，效率高得多
+        // Packed 格式数据只存在 data[0] 中
+        memcpy(dst, inFrame->data[0], total_size);
+        iCopyPos = total_size;
+      }
+
+      pOutData = dst;
       iSize = iCopyPos;
       return true;
     }
